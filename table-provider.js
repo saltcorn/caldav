@@ -53,8 +53,8 @@ const getCals = async (opts, client0) => {
   if (_allCals) return _allCals;
   const client = client0 || (await getClient(opts));
   const calendars = await client.fetchCalendars();
-  _allCals = calendars;
-  return calendars;
+  _allCals = calendars.filter((c) => c.ctag !== -1);
+  return _allCals;
 };
 
 const runQuery = async (cfg, where, opts) => {
@@ -88,6 +88,8 @@ const runQuery = async (cfg, where, opts) => {
     });
     all_evs.push(evs);
   }
+  console.log(calendars[0]);
+  console.log(calendars[1]);
   return all_evs.flat(2);
 };
 
