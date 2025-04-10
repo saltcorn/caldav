@@ -29,6 +29,49 @@ const configuration_workflow = (cfg) => (req) =>
           });
         },
       },
+      {
+        name: "Create Keys",
+        form: async () => {
+          const tables = await Table.find({});
+          const field_options = {};
+          tables.forEach((t) => {
+            field_options[t.name] = t.fields
+              .filter((f) => f.type?.name === "String")
+              .map((f) => f.name);
+          });
+          console.log(field_options);
+
+          return new Form({
+            blurb:
+              "Create key field by matching calendar URL to field in a different table",
+            fields: [
+              {
+                label: "Create key field",
+                name: "create_key_field",
+                type: "Bool",
+              },
+              {
+                name: "create_key_table_name",
+                label: "Table",
+                type: "String",
+                required: true,
+                attributes: { options: tables.map((t) => t.name) },
+                showIf: { create_key_field: true },
+              },
+              {
+                name: "create_key_field_name",
+                label: "Field",
+                type: "String",
+                required: true,
+                attributes: {
+                  calcOptions: ["create_key_table_name", field_options],
+                },
+                showIf: { create_key_field: true },
+              },
+            ],
+          });
+        },
+      },
     ],
   });
 
@@ -94,28 +137,53 @@ const runQuery = async (cfg, where, opts) => {
 
     //const parsed = ical.parseString(objects[0].data);
     //console.log("parsed", JSON.stringify(parsed, null, 2));
-    const evs = objects.map((o) => {
+    for (const o of objects) {
       let parsed;
       try {
         parsed = ical.parseString(o.data);
       } catch (e) {
-        console.error("iCal parsing error on calendar", calendar.url,":", e.message);
+        console.error(
+          "iCal parsing error on calendar",
+          calendar.url,
+          ":",
+          e.message
+        );
         console.error("iCal data:", o.data);
-        return [];
+        continue;
       }
-      return parsed.events.map((e) => ({
-        uid: e.uid?.value,
-        location: e.location?.value,
-        summary: e.summary?.value,
-        start: e.dtstart?.value ? new Date(e.dtstart?.value) : null,
-        end: e.dtend?.value ? new Date(e.dtend?.value) : null,
-        calendar_url: calendar.url,
-      }));
-    });
-    all_evs.push(evs);
-  } 
-  return all_evs.flat(2);
+      for (const e of parsed.events) {
+        const eo = {
+          uid: e.uid?.value,
+          location: e.location?.value,
+          summary: e.summary?.value,
+          start: e.dtstart?.value ? new Date(e.dtstart?.value) : null,
+          end: e.dtend?.value ? new Date(e.dtend?.value) : null,
+          calendar_url: calendar.url,
+        };
+        if (cfg.create_key_field) {
+          if (createKeyCache[calendar.url])
+            eo[`${cfg.create_key_table_name}_key`] =
+              createKeyCache[calendar.url];
+          else {
+            const table = Table.findOne(cfg.create_key_table_name);
+            const row = await table.getRow({
+              [cfg.create_key_field_name]: calendar.url,
+            });
+            if (row) {
+              const id = row[table.pk_name];
+              eo[`${cfg.create_key_table_name}_key`] = id;
+              createKeyCache[calendar.url] = id;
+            }
+          }
+          all_evs.push(eo);
+        }
+      }
+    }
+  }
+  return all_evs;
 };
+
+const createKeyCache = {};
 
 module.exports = (cfg) => ({
   CalDav: {
@@ -127,6 +195,15 @@ module.exports = (cfg) => ({
       { name: "calendar_url", label: "Calendar URL", type: "String" },
       { name: "start", label: "Start", type: "Date" },
       { name: "end", label: "End", type: "Date" },
+      ...(cfg?.create_key_field
+        ? [
+            {
+              name: `${cfg.create_key_table_name}_key`,
+              label: `${cfg.create_key_table_name} key`,
+              type: `Key to ${cfg.create_key_table_name}`,
+            },
+          ]
+        : []),
     ],
     get_table: (cfgTable) => {
       return {
