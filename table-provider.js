@@ -84,6 +84,7 @@ const runQuery = async (cfg, where, opts) => {
         summary: e.summary?.value,
         start: e.dtstart?.value ? new Date(e.dtstart?.value) : null,
         end: e.dtend?.value ? new Date(e.dtend?.value) : null,
+        calendar_url: calendar.url,
       }));
     });
     all_evs.push(evs);
@@ -100,6 +101,7 @@ module.exports = (cfg) => ({
       { name: "uid", type: "String", label: "UID", primary_key: true },
       { name: "summary", label: "Summary", type: "String" },
       { name: "location", label: "Location", type: "String" },
+      { name: "calendar_url", label: "Calendar URL", type: "String" },
       { name: "start", label: "Start", type: "Date" },
       { name: "end", label: "End", type: "Date" },
     ],
