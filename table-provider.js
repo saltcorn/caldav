@@ -73,9 +73,23 @@ const runQuery = async (cfg, where, opts) => {
       !where?.calendar_url.in.includes(calendar.url)
     )
       continue;
+    let timeRange;
+    if (where?.start?.gt || where?.end?.gt) {
+      timeRange = {};
+      timeRange.start = new Date(
+        where?.start?.gt || where?.end?.gt
+      ).toISOString();
+    }
+    if (where?.start?.lt || where?.end?.lt) {
+      if (!timeRange) timeRange = {};
+      timeRange.end = new Date(
+        where?.start?.lt || where?.end?.lt
+      ).toISOString();
+    }
 
     const objects = await client.fetchCalendarObjects({
       calendar,
+      timeRange,
     });
 
     //const parsed = ical.parseString(objects[0].data);
