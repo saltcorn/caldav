@@ -8,7 +8,7 @@ const Table = require("@saltcorn/data/models/table");
 const { getState } = require("@saltcorn/data/db/state");
 const { mkTable } = require("@saltcorn/markup");
 const { pre, code } = require("@saltcorn/markup/tags");
-
+const { createDAVClient } = require("tsdav");
 const configuration_workflow = (req) =>
   new Workflow({
     steps: [
@@ -30,7 +30,23 @@ const configuration_workflow = (req) =>
     ],
   });
 
-const runQuery = async (cfg, where, opts) => {
+const runQuery = async (
+  { username, password, auth_method, calendar_url },
+  where,
+  opts
+) => {
+  const client = await createDAVClient({
+    serverUrl: calendar_url,
+    credentials: {
+      username,
+      password,
+    },
+    authMethod: "Basic",
+    defaultAccountType: "caldav",
+  });
+  const calendars = await client.fetchCalendars();
+  console.log(calendars);
+
   /* const sqlQ = parser.sqlify(ast, opt);
   console.log({ sqlQ, phValues, opts });
   const qres = await client.query(sqlQ, phValues);
@@ -42,17 +58,17 @@ const runQuery = async (cfg, where, opts) => {
   return [];
 };
 
-module.exports = {
-  "SQL query": {
+module.exports = (cfg) => ({
+  CalDav: {
     configuration_workflow,
     fields: (cfg) => cfg?.columns || [],
-    get_table: (cfg) => {
+    get_table: (cfgTable) => {
       return {
         getRows: async (where, opts) => {
-          const qres = await runQuery(cfg, where, opts);
+          const qres = await runQuery({ ...cfg, ...cfgTable }, where, opts);
           return qres;
         },
       };
     },
   },
-};
+});

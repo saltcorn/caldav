@@ -36,9 +36,21 @@ const configuration_workflow = () =>
                 sublabel: "CalDav server URL",
               },
               {
+                name: "username",
+                label: "User name",
+                type: "String",
+              },
+              {
                 name: "password",
                 label: "Password",
                 input_type: "password",
+              },
+              {
+                name: "auth_method",
+                label: "Auth method",
+                type: "String",
+                required: true,
+                attributes: { options: ["Basic", "OAuth"] },
               },
             ],
           });
@@ -49,7 +61,7 @@ const configuration_workflow = () =>
 
 module.exports = {
   sc_plugin_api_version: 1,
-  plugin_name: "sql",
-  actions: require("./action.js"),
+  plugin_name: "caldav",
+  configuration_workflow,
   table_providers: require("./table-provider.js"),
 };
