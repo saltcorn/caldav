@@ -14,20 +14,18 @@ const configuration_workflow = (cfg) => (req) =>
   new Workflow({
     steps: [
       {
-        name: "query",
+        name: "Calendars",
         form: async () => {
           const client = await getClient(cfg);
           const cals = await getCals(cfg, client);
           return new Form({
-            fields: [
-              {
-                name: "calendar_url",
-                label: "Calendar URL",
-                type: "String",
-                required: true,
-                attributes: { options: cals.map((c) => c.url) },
-              },
-            ],
+            blurb: "Subscribed calendars to pull events from",
+            fields: cals.map((c) => ({
+              name: `ctag_${c.ctag}`,
+              label: c.displayName,
+              sublabel: c.url,
+              type: "Bool",
+            })),
           });
         },
       },
@@ -37,6 +35,8 @@ const configuration_workflow = (cfg) => (req) =>
 let _allCals;
 
 const getClient = async ({ username, password, auth_method, url }) => {
+  //console.log({ url });
+
   const client = await createDAVClient({
     serverUrl: url,
     credentials: {
@@ -60,26 +60,35 @@ const getCals = async (opts, client0) => {
 const runQuery = async (cfg, where, opts) => {
   const client = await getClient(cfg);
   const cals = await getCals(cfg, client);
-  const calendar = cals.find((c) => c.url === cfg.calendar_url);
-  console.log("calendar", calendar);
-  if (!calendar) return [];
-  const objects = await client.fetchCalendarObjects({
-    calendar,
-  });
+  const calendars = cals.filter((c) => cfg[`ctag_${c.ctag}`]);
+  const all_evs = [];
+  for (const calendar of calendars) {
+    const objects = await client.fetchCalendarObjects({
+      calendar,
+    });
 
-  const parsed = ical.parseString(objects[0].data);
-  console.log("parsed", JSON.stringify(parsed, null, 2));
-  const evs = objects.map((o) => {
-    const parsed = ical.parseString(o.data);
-    return parsed.events.map((e) => ({
-      uid: e.uid?.value,
-      location: e.location?.value,
-      summary: e.summary?.value,
-      start: e.dtstart?.value ? new Date(e.dtstart?.value) : null,
-      end: e.dtend?.value ? new Date(e.dtend?.value) : null,
-    }));
-  });
-  return evs.flat(1);
+    //const parsed = ical.parseString(objects[0].data);
+    //console.log("parsed", JSON.stringify(parsed, null, 2));
+    const evs = objects.map((o) => {
+      let parsed;
+      try {
+        parsed = ical.parseString(o.data);
+      } catch (e) {
+        console.error("ical parsing error", e.message);
+        console.error("iCal data:", o.data);
+        return [];
+      }
+      return parsed.events.map((e) => ({
+        uid: e.uid?.value,
+        location: e.location?.value,
+        summary: e.summary?.value,
+        start: e.dtstart?.value ? new Date(e.dtstart?.value) : null,
+        end: e.dtend?.value ? new Date(e.dtend?.value) : null,
+      }));
+    });
+    all_evs.push(evs);
+  }
+  return all_evs.flat(2);
 };
 
 module.exports = (cfg) => ({
