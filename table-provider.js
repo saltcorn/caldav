@@ -113,9 +113,7 @@ const runQuery = async (cfg, where, opts) => {
       }));
     });
     all_evs.push(evs);
-  }
-  console.log(calendars[0]);
-  console.log(calendars[1]);
+  } 
   return all_evs.flat(2);
 };
 
