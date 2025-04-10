@@ -99,7 +99,7 @@ const runQuery = async (cfg, where, opts) => {
       try {
         parsed = ical.parseString(o.data);
       } catch (e) {
-        console.error("ical parsing error", e.message);
+        console.error("iCal parsing error on calendar", calendar.url,":", e.message);
         console.error("iCal data:", o.data);
         return [];
       }
