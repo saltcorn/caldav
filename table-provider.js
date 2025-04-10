@@ -63,6 +63,17 @@ const runQuery = async (cfg, where, opts) => {
   const calendars = cals.filter((c) => cfg[`ctag_${c.ctag}`]);
   const all_evs = [];
   for (const calendar of calendars) {
+    if (
+      typeof where?.calendar_url === "string" &&
+      where?.calendar_url !== calendar.url
+    )
+      continue;
+    if (
+      where?.calendar_url?.in &&
+      !where?.calendar_url.in.includes(calendar.url)
+    )
+      continue;
+
     const objects = await client.fetchCalendarObjects({
       calendar,
     });
