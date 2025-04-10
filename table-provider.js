@@ -62,12 +62,11 @@ const runQuery = async (cfg, where, opts) => {
   const cals = await getCals(cfg, client);
   const calendar = cals.find((c) => c.url === cfg.calendar_url);
   console.log("calendar", calendar);
-
+  if (!calendar) return [];
   const objects = await client.fetchCalendarObjects({
     calendar,
   });
 
-  console.log(objects[0]);
   const parsed = ical.parseString(objects[0].data);
   console.log("parsed", JSON.stringify(parsed, null, 2));
   const evs = objects.map((o) => {
