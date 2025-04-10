@@ -9,6 +9,7 @@ const { getState } = require("@saltcorn/data/db/state");
 const { mkTable } = require("@saltcorn/markup");
 const { pre, code } = require("@saltcorn/markup/tags");
 const { createDAVClient } = require("tsdav");
+const ical = require("cal-parser");
 const configuration_workflow = (cfg) => (req) =>
   new Workflow({
     steps: [
@@ -36,8 +37,6 @@ const configuration_workflow = (cfg) => (req) =>
 let _allCals;
 
 const getClient = async ({ username, password, auth_method, url }) => {
-  console.log("url", url);
-
   const client = await createDAVClient({
     serverUrl: url,
     credentials: {
@@ -68,23 +67,32 @@ const runQuery = async (cfg, where, opts) => {
     calendar,
   });
 
-  console.log(objects);
-
-  /* const sqlQ = parser.sqlify(ast, opt);
-  console.log({ sqlQ, phValues, opts });
-  const qres = await client.query(sqlQ, phValues);
-  qres.query = sqlQ;
-  await client.query(`ROLLBACK;`);
-
-  if (!is_sqlite) client.release(true);
-  return qres;*/
-  return [];
+  console.log(objects[0]);
+  const parsed = ical.parseString(objects[0].data);
+  console.log("parsed", JSON.stringify(parsed, null, 2));
+  const evs = objects.map((o) => {
+    const parsed = ical.parseString(o.data);
+    return parsed.events.map((e) => ({
+      uid: e.uid?.value,
+      location: e.location?.value,
+      summary: e.summary?.value,
+      start: e.dtstart?.value ? new Date(e.dtstart?.value) : null,
+      end: e.dtend?.value ? new Date(e.dtend?.value) : null,
+    }));
+  });
+  return evs.flat(1);
 };
 
 module.exports = (cfg) => ({
   CalDav: {
     configuration_workflow: configuration_workflow(cfg),
-    fields: (cfg) => [{ name: "id", type: "Integer" }],
+    fields: (cfg) => [
+      { name: "uid", type: "String", label: "UID", primary_key: true },
+      { name: "summary", label: "Summary", type: "String" },
+      { name: "location", label: "Location", type: "String" },
+      { name: "start", label: "Start", type: "Date" },
+      { name: "end", label: "End", type: "Date" },
+    ],
     get_table: (cfgTable) => {
       return {
         getRows: async (where, opts) => {
