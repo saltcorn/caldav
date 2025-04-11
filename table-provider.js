@@ -132,6 +132,7 @@ const runQuery = async (cfg, where, opts) => {
     const objects = await client.fetchCalendarObjects({
       calendar,
       timeRange,
+      useMultiGet: false,
     });
 
     //const parsed = ical.parseString(objects[0].data);
