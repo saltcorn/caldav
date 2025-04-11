@@ -161,6 +161,7 @@ const runQuery = async (cfg, where, opts) => {
           start: e.dtstart?.value ? new Date(e.dtstart?.value) : null,
           end: e.dtend?.value ? new Date(e.dtend?.value) : null,
           calendar_url: calendar.url,
+          categories: e.categories?.value,
         };
         if (cfg.create_key_field) {
           if (createKeyCache[calendar.url])
@@ -194,11 +195,13 @@ module.exports = (cfg) => ({
     fields: (cfg) => [
       { name: "uid", type: "String", label: "UID", primary_key: true },
       { name: "summary", label: "Summary", type: "String" },
+      { name: "start", label: "Start", type: "Date" },
+      { name: "end", label: "End", type: "Date" },
       { name: "description", label: "Description", type: "String" },
       { name: "location", label: "Location", type: "String" },
       { name: "calendar_url", label: "Calendar URL", type: "String" },
-      { name: "start", label: "Start", type: "Date" },
-      { name: "end", label: "End", type: "Date" },
+      { name: "description", label: "Description", type: "String" },
+      { name: "categories", label: "Categories", type: "String" },
       ...(cfg?.create_key_field
         ? [
             {
