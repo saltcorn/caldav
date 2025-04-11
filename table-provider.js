@@ -157,6 +157,7 @@ const runQuery = async (cfg, where, opts) => {
           uid: e.uid?.value,
           location: e.location?.value,
           summary: e.summary?.value,
+          description: e.description?.value,
           start: e.dtstart?.value ? new Date(e.dtstart?.value) : null,
           end: e.dtend?.value ? new Date(e.dtend?.value) : null,
           calendar_url: calendar.url,
@@ -193,6 +194,7 @@ module.exports = (cfg) => ({
     fields: (cfg) => [
       { name: "uid", type: "String", label: "UID", primary_key: true },
       { name: "summary", label: "Summary", type: "String" },
+      { name: "description", label: "Description", type: "String" },
       { name: "location", label: "Location", type: "String" },
       { name: "calendar_url", label: "Calendar URL", type: "String" },
       { name: "start", label: "Start", type: "Date" },
