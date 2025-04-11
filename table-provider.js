@@ -21,7 +21,7 @@ const configuration_workflow = (cfg) => (req) =>
           return new Form({
             blurb: "Subscribed calendars to pull events from",
             fields: cals.map((c) => ({
-              name: `ctag_${c.ctag}`,
+              name: `cal_${encodeURIComponent(c.url)}`,
               label: c.displayName,
               sublabel: c.url,
               type: "Bool",
@@ -102,7 +102,7 @@ const getCals = async (opts, client0) => {
 const runQuery = async (cfg, where, opts) => {
   const client = await getClient(cfg);
   const cals = await getCals(cfg, client);
-  const calendars = cals.filter((c) => cfg[`ctag_${c.ctag}`]);
+  const calendars = cals.filter((c) => cfg[`cal_${encodeURIComponent(c.url)}`]);
   const all_evs = [];
   for (const calendar of calendars) {
     if (
@@ -133,7 +133,6 @@ const runQuery = async (cfg, where, opts) => {
       calendar,
       timeRange,
     });
-    
 
     //const parsed = ical.parseString(objects[0].data);
     //console.log("parsed", JSON.stringify(parsed, null, 2));
@@ -192,7 +191,7 @@ const runQuery = async (cfg, where, opts) => {
 
 const allDayDuration = (e) => {
   if (!e.duration?.value) return false;
-  return e.duration.value.test(/P\dD/);
+  return /P\dD/.test(e.duration.value.test);
 };
 
 const createKeyCache = {};
