@@ -161,7 +161,7 @@ const runQuery = async (cfg, where, opts) => {
           summary: e.summary?.value,
           description: e.description?.value,
           start: e.dtstart?.value ? new Date(e.dtstart?.value) : null,
-          end: e.dtend?.value ? new Date(e.dtend?.value) : null,
+          end: getEnd(e),
           calendar_url: calendar.url,
           categories: e.categories?.value,
           all_day: allDayDuration(e),
@@ -192,7 +192,22 @@ const runQuery = async (cfg, where, opts) => {
 
 const allDayDuration = (e) => {
   if (!e.duration?.value) return false;
-  return /P\dD/.test(e.duration.value.test);
+  return /P\d+D/.test(e.duration.value.test);
+};
+
+const getEnd = (e) => {
+  if (e.dtend?.value) return new Date(e.dtend?.value);
+  if (!e.duration?.value || !e.dtstart?.value) return null;
+  const d = e.duration?.value;
+  const start = new Date(e.dtstart?.value);
+  if (/PT(\d+)M/.test(d)) {
+    const mins = d.match(/PT(\d+)M/)[1];
+    return new Date(start.getTime() + mins * 60000);
+  }
+  if (/PT(\d+)H/.test(d)) {
+    const hrs = d.match(/PT(\d+)H/)[1];
+    return new Date(start.getTime() + hrs * 60000 * 60);
+  }
 };
 
 const createKeyCache = {};
