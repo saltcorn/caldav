@@ -39,7 +39,6 @@ const configuration_workflow = (cfg) => (req) =>
               .filter((f) => f.type?.name === "String")
               .map((f) => f.name);
           });
-          console.log(field_options);
 
           return new Form({
             blurb:
@@ -134,6 +133,7 @@ const runQuery = async (cfg, where, opts) => {
       calendar,
       timeRange,
     });
+    //console.log(objects);
 
     //const parsed = ical.parseString(objects[0].data);
     //console.log("parsed", JSON.stringify(parsed, null, 2));
@@ -151,6 +151,7 @@ const runQuery = async (cfg, where, opts) => {
         console.error("iCal data:", o.data);
         continue;
       }
+
       for (const e of parsed.events) {
         const eo = {
           uid: e.uid?.value,
@@ -175,11 +176,12 @@ const runQuery = async (cfg, where, opts) => {
               createKeyCache[calendar.url] = id;
             }
           }
-          all_evs.push(eo);
         }
+        all_evs.push(eo);
       }
     }
   }
+
   return all_evs;
 };
 
