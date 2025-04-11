@@ -133,7 +133,7 @@ const runQuery = async (cfg, where, opts) => {
       calendar,
       timeRange,
     });
-    console.log(objects);
+    
 
     //const parsed = ical.parseString(objects[0].data);
     //console.log("parsed", JSON.stringify(parsed, null, 2));
@@ -153,7 +153,7 @@ const runQuery = async (cfg, where, opts) => {
       }
 
       for (const e of parsed.events) {
-        console.log("e", e);
+        //console.log("e", e);
 
         const eo = {
           uid: e.uid?.value,
