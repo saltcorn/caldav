@@ -133,7 +133,7 @@ const runQuery = async (cfg, where, opts) => {
       calendar,
       timeRange,
     });
-    //console.log(objects);
+    console.log(objects);
 
     //const parsed = ical.parseString(objects[0].data);
     //console.log("parsed", JSON.stringify(parsed, null, 2));
@@ -153,6 +153,8 @@ const runQuery = async (cfg, where, opts) => {
       }
 
       for (const e of parsed.events) {
+        console.log("e", e);
+
         const eo = {
           uid: e.uid?.value,
           location: e.location?.value,
@@ -162,6 +164,7 @@ const runQuery = async (cfg, where, opts) => {
           end: e.dtend?.value ? new Date(e.dtend?.value) : null,
           calendar_url: calendar.url,
           categories: e.categories?.value,
+          all_day: allDayDuration(e),
         };
         if (cfg.create_key_field) {
           if (createKeyCache[calendar.url])
@@ -187,6 +190,11 @@ const runQuery = async (cfg, where, opts) => {
   return all_evs;
 };
 
+const allDayDuration = (e) => {
+  if (!e.duration?.value) return false;
+  return e.duration.value.test(/P\dD/);
+};
+
 const createKeyCache = {};
 
 module.exports = (cfg) => ({
@@ -202,6 +210,7 @@ module.exports = (cfg) => ({
       { name: "calendar_url", label: "Calendar URL", type: "String" },
       { name: "description", label: "Description", type: "String" },
       { name: "categories", label: "Categories", type: "String" },
+      { name: "all_day", label: "All day", type: "Bool" },
       ...(cfg?.create_key_field
         ? [
             {
