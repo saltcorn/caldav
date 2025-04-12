@@ -166,7 +166,6 @@ const runQuery = async (cfg, where, opts) => {
       }
     }
   }
-
   return all_evs;
 };
 
@@ -193,6 +192,8 @@ const includeCalendar = (where, calendar, cfg) => {
     return false;
   if (where?.calendar_url?.in && !where?.calendar_url.in.includes(calendar.url))
     return false;
+
+  return true
 };
 
 const countEvents = async (cfg, where, opts) => {
