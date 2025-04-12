@@ -193,10 +193,11 @@ const includeCalendar = (where, calendar, cfg) => {
   if (where?.calendar_url?.in && !where?.calendar_url.in.includes(calendar.url))
     return false;
 
-  return true
+  return true;
 };
 
 const countEvents = async (cfg, where, opts) => {
+  if (Object.keys(where).length === 0) return null;
   const client = await getClient(cfg);
   const cals = await getCals(cfg, client);
   const calendars = cals.filter((c) => cfg[`cal_${encodeURIComponent(c.url)}`]);
