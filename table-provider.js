@@ -105,29 +105,9 @@ const runQuery = async (cfg, where, opts) => {
   const calendars = cals.filter((c) => cfg[`cal_${encodeURIComponent(c.url)}`]);
   const all_evs = [];
   for (const calendar of calendars) {
-    if (
-      typeof where?.calendar_url === "string" &&
-      where?.calendar_url !== calendar.url
-    )
-      continue;
-    if (
-      where?.calendar_url?.in &&
-      !where?.calendar_url.in.includes(calendar.url)
-    )
-      continue;
-    let timeRange;
-    if (where?.start?.gt || where?.end?.gt) {
-      timeRange = {};
-      timeRange.start = new Date(
-        where?.start?.gt || where?.end?.gt
-      ).toISOString();
-    }
-    if (where?.start?.lt || where?.end?.lt) {
-      if (!timeRange) timeRange = {};
-      timeRange.end = new Date(
-        where?.start?.lt || where?.end?.lt
-      ).toISOString();
-    }
+    if (!includeCalendar(where, calendar, cfg)) continue;
+
+    let timeRange = getTimeRange(where);
 
     const objects = await client.fetchCalendarObjects({
       calendar,
@@ -190,6 +170,72 @@ const runQuery = async (cfg, where, opts) => {
   return all_evs;
 };
 
+const getTimeRange = (where) => {
+  let timeRange;
+  if (where?.start?.gt || where?.end?.gt) {
+    timeRange = {};
+    timeRange.start = new Date(
+      where?.start?.gt || where?.end?.gt
+    ).toISOString();
+  }
+  if (where?.start?.lt || where?.end?.lt) {
+    if (!timeRange) timeRange = {};
+    timeRange.end = new Date(where?.start?.lt || where?.end?.lt).toISOString();
+  }
+  return timeRange;
+};
+
+const includeCalendar = (where, calendar, cfg) => {
+  if (
+    typeof where?.calendar_url === "string" &&
+    where?.calendar_url !== calendar.url
+  )
+    return false;
+  if (where?.calendar_url?.in && !where?.calendar_url.in.includes(calendar.url))
+    return false;
+};
+
+const countEvents = async (cfg, where, opts) => {
+  const client = await getClient(cfg);
+  const cals = await getCals(cfg, client);
+  const calendars = cals.filter((c) => cfg[`cal_${encodeURIComponent(c.url)}`]);
+  const all_evs = [];
+  let eventCount = 0;
+  for (const calendar of calendars) {
+    if (!includeCalendar(where, calendar, cfg)) continue;
+    const timeRange = getTimeRange(where);
+    const objects = await client.fetchCalendarObjects({
+      calendar,
+      timeRange,
+      useMultiGet: false,
+    });
+
+    //const parsed = ical.parseString(objects[0].data);
+    //console.log("parsed", JSON.stringify(parsed, null, 2));
+    for (const o of objects) {
+      let parsed;
+      try {
+        parsed = ical.parseString(o.data);
+      } catch (e) {
+        console.error(
+          "iCal parsing error on calendar",
+          calendar.url,
+          ":",
+          e.message
+        );
+        console.error("iCal data:", o.data);
+        continue;
+      }
+
+      //console.log("e", e);
+
+      for (const e of parsed.events) eventCount += 1;
+    }
+  }
+
+  return eventCount;
+};
+
 const allDayDuration = (e) => {
   if (!e.duration?.value) return false;
   return /P\d+D/.test(e.duration.value.test);
@@ -241,6 +287,9 @@ module.exports = (cfg) => ({
         getRows: async (where, opts) => {
           const qres = await runQuery({ ...cfg, ...cfgTable }, where, opts);
           return qres;
+        },
+        countRows: async (where, opts) => {
+          return await countEvents({ ...cfg, ...cfgTable }, where, opts);
         },
       };
     },
