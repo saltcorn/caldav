@@ -105,7 +105,7 @@ const runQuery = async (cfg, where, opts) => {
   const calendars = cals.filter((c) => cfg[`cal_${encodeURIComponent(c.url)}`]);
   const all_evs = [];
   for (const calendar of calendars) {
-    if (!includeCalendar(where, calendar, cfg)) continue;
+    if (!(await includeCalendar(where, calendar, cfg))) continue;
 
     let timeRange = getTimeRange(where);
 
@@ -184,7 +184,7 @@ const getTimeRange = (where) => {
   return timeRange;
 };
 
-const includeCalendar = (where, calendar, cfg) => {
+const includeCalendar = async (where, calendar, cfg) => {
   if (
     typeof where?.calendar_url === "string" &&
     where?.calendar_url !== calendar.url
@@ -192,7 +192,22 @@ const includeCalendar = (where, calendar, cfg) => {
     return false;
   if (where?.calendar_url?.in && !where?.calendar_url.in.includes(calendar.url))
     return false;
+  if (cfg?.create_key_field && where[`${cfg.create_key_table_name}_key`]) {
+    const cacheVal = Object.entries(createKeyCache).find(
+      ([url, id]) => id == where[`${cfg.create_key_table_name}_key`]
+    );
+    if (cacheVal) return cacheVal[0] === calendar.url;
 
+    const table = Table.findOne(cfg.create_key_table_name);
+    const row = await table.getRow({
+      [cfg.create_key_field_name]: calendar.url,
+    });
+    if (row) {
+      createKeyCache[calendar.url] = row[table.pk_name];
+      return row[table.pk_name] == calendar.url;
+    }
+    return false;
+  }
   return true;
 };
 
@@ -204,7 +219,7 @@ const countEvents = async (cfg, where, opts) => {
   const all_evs = [];
   let eventCount = 0;
   for (const calendar of calendars) {
-    if (!includeCalendar(where, calendar, cfg)) continue;
+    if (!(await includeCalendar(where, calendar, cfg))) continue;
     const timeRange = getTimeRange(where);
     const objects = await client.fetchCalendarObjects({
       calendar,
