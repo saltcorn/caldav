@@ -102,6 +102,8 @@ const getCals = async (opts, client0) => {
 };
 
 const runQuery = async (cfg, where, opts) => {
+  console.log("caldav where", where);
+
   const client = await getClient(cfg);
   const cals = await getCals(cfg, client);
   const calendars = cals.filter((c) => cfg[`cal_${encodeURIComponent(c.url)}`]);
@@ -112,8 +114,11 @@ const runQuery = async (cfg, where, opts) => {
     let timeRange = getTimeRange(where);
 
     let objects;
-    if (typeof where?.url === "string") {
-      const url = where.url.split("#")[0];
+    if (
+      typeof where?.url === "string" ||
+      typeof where?.url?.ilike === "string"
+    ) {
+      const url = (where.url?.ilike || where.url).split("#")[0];
       const resp = await fetch(url, {
         headers: new Headers({
           Authorization: `Basic ${Buffer.from(
@@ -204,8 +209,9 @@ const getTimeRange = (where) => {
 };
 
 const includeCalendar = async (where, calendar, cfg) => {
-  if (typeof where?.url === "string")
-    return where?.url.startsWith(calendar.url);
+  if (typeof where?.url === "string" || typeof where?.url?.ilike === "string") {
+    return (where.url?.ilike || where.url).startsWith(calendar.url);
+  }
   if (
     typeof where?.calendar_url === "string" &&
     where?.calendar_url !== calendar.url
