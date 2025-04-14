@@ -10,6 +10,8 @@ const { mkTable } = require("@saltcorn/markup");
 const { pre, code } = require("@saltcorn/markup/tags");
 const { createDAVClient } = require("tsdav");
 const ical = require("cal-parser");
+const fetch = require("node-fetch");
+
 const configuration_workflow = (cfg) => (req) =>
   new Workflow({
     steps: [
@@ -109,11 +111,24 @@ const runQuery = async (cfg, where, opts) => {
 
     let timeRange = getTimeRange(where);
 
-    const objects = await client.fetchCalendarObjects({
-      calendar,
-      timeRange,
-      useMultiGet: false,
-    });
+    let objects;
+    if (typeof where?.url === "string") {
+      const url = where.url.split("#")[0];
+      const resp = await fetch(url, {
+        headers: new Headers({
+          Authorization: `Basic ${Buffer.from(
+            `${cfg.username}:${cfg.password}`
+          ).toString("base64")}`,
+        }),
+      });
+      //console.log("resp", await resp.text());
+      objects = [{ url, data: await resp.text() }];
+    } else
+      objects = await client.fetchCalendarObjects({
+        calendar,
+        timeRange,
+        useMultiGet: false,
+      });
 
     //const parsed = ical.parseString(objects[0].data);
     //console.log("parsed", JSON.stringify(parsed, null, 2));
@@ -136,7 +151,11 @@ const runQuery = async (cfg, where, opts) => {
         //console.log("e", e);
 
         const eo = {
-          uid: e.uid?.value,
+          url: `${o.url}${
+            e["recurrence-id"]?.value
+              ? `#${e["recurrence-id"].value || ""}`
+              : ""
+          }`,
           location: e.location?.value,
           summary: e.summary?.value,
           description: e.description?.value,
@@ -185,6 +204,8 @@ const getTimeRange = (where) => {
 };
 
 const includeCalendar = async (where, calendar, cfg) => {
+  if (typeof where?.url === "string")
+    return where?.url.startsWith(calendar.url);
   if (
     typeof where?.calendar_url === "string" &&
     where?.calendar_url !== calendar.url
@@ -281,7 +302,7 @@ module.exports = (cfg) => ({
   CalDav: {
     configuration_workflow: configuration_workflow(cfg),
     fields: (cfg) => [
-      { name: "uid", type: "String", label: "UID", primary_key: true },
+      { name: "url", type: "String", label: "URL", primary_key: true },
       { name: "summary", label: "Summary", type: "String" },
       { name: "start", label: "Start", type: "Date" },
       { name: "end", label: "End", type: "Date" },
