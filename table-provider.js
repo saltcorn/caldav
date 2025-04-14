@@ -254,6 +254,8 @@ const countEvents = async (cfg, where, opts) => {
 };
 
 const allDayDuration = (e) => {
+  if (e.dtstart?.params?.value === "DATE" && e.dtend?.params?.value === "DATE")
+    return true;
   if (!e.duration?.value) return false;
   return /P\d+D/.test(e.duration.value.test);
 };
