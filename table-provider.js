@@ -297,6 +297,10 @@ module.exports = (cfg) => ({
               name: `${cfg.create_key_table_name}_key`,
               label: `${cfg.create_key_table_name} key`,
               type: `Key to ${cfg.create_key_table_name}`,
+              attributes:
+                cfg.create_key_table_name === "users"
+                  ? { summary_field: "email" }
+                  : {},
             },
           ]
         : []),
