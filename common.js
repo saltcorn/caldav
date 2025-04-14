@@ -96,4 +96,106 @@ const getEnd = (e) => {
 
 const createKeyCache = {};
 
-module.exports = { createKeyCache, getClient, getCals, getEnd, allDayDuration, includeCalendar, getTimeRange };
+const runQuery = async (cfg, where, opts) => {
+  console.log("caldav where", where);
+
+  const client = await getClient(cfg);
+  const cals = await getCals(cfg, client);
+  const calendars = cals.filter((c) => cfg[`cal_${encodeURIComponent(c.url)}`]);
+  const all_evs = [];
+  for (const calendar of calendars) {
+    if (!(await includeCalendar(where, calendar, cfg))) continue;
+
+    let timeRange = getTimeRange(where);
+
+    let objects;
+    if (
+      typeof where?.url === "string" ||
+      typeof where?.url?.ilike === "string"
+    ) {
+      const url = (where.url?.ilike || where.url).split("#")[0];
+      const resp = await fetch(url, {
+        headers: new Headers({
+          Authorization: `Basic ${Buffer.from(
+            `${cfg.username}:${cfg.password}`
+          ).toString("base64")}`,
+        }),
+      });
+      //console.log("resp", await resp.text());
+      objects = [{ url, data: await resp.text() }];
+    } else
+      objects = await client.fetchCalendarObjects({
+        calendar,
+        timeRange,
+        useMultiGet: false,
+      });
+
+    //const parsed = ical.parseString(objects[0].data);
+    //console.log("parsed", JSON.stringify(parsed, null, 2));
+    for (const o of objects) {
+      let parsed;
+      try {
+        parsed = ical.parseString(o.data);
+      } catch (e) {
+        console.error(
+          "iCal parsing error on calendar",
+          calendar.url,
+          ":",
+          e.message
+        );
+        console.error("iCal data:", o.data);
+        continue;
+      }
+
+      for (const e of parsed.events) {
+        //console.log("e", e);
+
+        const eo = {
+          url: `${o.url}${
+            e["recurrence-id"]?.value
+              ? `#${e["recurrence-id"].value || ""}`
+              : ""
+          }`,
+          location: e.location?.value,
+          etag: o.etag,
+          summary: e.summary?.value,
+          description: e.description?.value,
+          start: e.dtstart?.value ? new Date(e.dtstart?.value) : null,
+          end: getEnd(e),
+          calendar_url: calendar.url,
+          categories: e.categories?.value,
+          all_day: allDayDuration(e),
+        };
+        if (cfg.create_key_field) {
+          if (createKeyCache[calendar.url])
+            eo[`${cfg.create_key_table_name}_key`] =
+              createKeyCache[calendar.url];
+          else {
+            const table = Table.findOne(cfg.create_key_table_name);
+            const row = await table.getRow({
+              [cfg.create_key_field_name]: calendar.url,
+            });
+            if (row) {
+              const id = row[table.pk_name];
+              eo[`${cfg.create_key_table_name}_key`] = id;
+              createKeyCache[calendar.url] = id;
+            }
+          }
+        }
+        all_evs.push(eo);
+      }
+    }
+  }
+  return all_evs;
+};
+
+module.exports = {
+  createKeyCache,
+  getClient,
+  getCals,
+  getEnd,
+  allDayDuration,
+  includeCalendar,
+  getTimeRange,
+  runQuery,
+};
