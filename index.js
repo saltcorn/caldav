@@ -64,5 +64,8 @@ module.exports = {
   plugin_name: "caldav",
   configuration_workflow,
   table_providers: require("./table-provider.js"),
-  actions: (cfg) => ({ caldav_sync: require("./sync-action")(cfg) }),
+  actions: (cfg) => ({
+    caldav_sync: require("./sync-action")(cfg),
+    caldav_add: require("./add-action")(cfg),
+  }),
 };
