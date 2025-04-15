@@ -208,6 +208,6 @@ module.exports = (cfg) => ({
         await table.updateRow(row, existingEvent[table.pk_name]);
       } else await table.insertRow(row);
     }
-    await table.deleteRows({ [table.pk_name]: { in: [...deleteEtags] } });
+    await table.deleteRows({ [etag_field]: { in: [...deleteEtags] } });
   },
 });
