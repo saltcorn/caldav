@@ -167,6 +167,9 @@ const runQuery = async (cfg, where, opts) => {
           categories: e.categories?.value,
           all_day: allDayDuration(e),
         };
+        if (e.recurrenceRule) {
+          eo.rrule = e.recurrenceRule.toString();
+        }
         if (cfg.create_key_field) {
           if (createKeyCache[calendar.url])
             eo[`${cfg.create_key_table_name}_key`] =

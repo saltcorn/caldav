@@ -142,6 +142,7 @@ module.exports = (cfg) => ({
       { name: "description", label: "Description", type: "String" },
       { name: "categories", label: "Categories", type: "String" },
       { name: "etag", label: "E-Tag", type: "String" },
+      { name: "rrule", label: "RRule", type: "String" },
 
       { name: "all_day", label: "All day", type: "Bool" },
       ...(cfg?.create_key_field
