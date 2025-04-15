@@ -147,6 +147,14 @@ module.exports = (cfg) => ({
         },
       },
       {
+        name: "rrule_field",
+        label: "Recurrence rule field",
+        type: "String",
+        attributes: {
+          calcOptions: ["table_dest", strOptFields],
+        },
+      },
+      {
         name: "all_day_field",
         label: "All day field",
         type: "String",
@@ -179,6 +187,7 @@ module.exports = (cfg) => ({
       categories_field,
       all_day_field,
       etag_field,
+      rrule_field,
       error_action,
       ...calFlags
     } = configuration;
@@ -203,6 +212,7 @@ module.exports = (cfg) => ({
         [etag_field]: e.etag,
         [all_day_field]: e.all_day,
       };
+      if (rrule_field) row[rrule_field] = e.rrule;
       const existingEvent = await table.getRow({ [url_field]: e.url });
       if (existingEvent) {
         await table.updateRow(row, existingEvent[table.pk_name]);
