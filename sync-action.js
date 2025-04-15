@@ -1,19 +1,10 @@
 const db = require("@saltcorn/data/db");
 const Table = require("@saltcorn/data/models/table");
-const {
-  getFileAggregations,
-  getOauth2Client,
-} = require("@saltcorn/data/models/email");
 const File = require("@saltcorn/data/models/file");
 const User = require("@saltcorn/data/models/user");
 const Crash = require("@saltcorn/data/models/crash");
 const Trigger = require("@saltcorn/data/models/trigger");
 const Plugin = require("@saltcorn/data/models/plugin");
-const mailparser = require("mailparser");
-const { ImapFlow } = require("imapflow");
-const QuotedPrintable = require("@vlasky/quoted-printable");
-const exec = require("child_process").exec;
-const fsp = require("fs").promises;
 const { getState } = require("@saltcorn/data/db/state");
 const {
   getClient,
@@ -46,12 +37,15 @@ module.exports = (cfg) => ({
     const tableMap = {};
     tables.forEach((t) => (tableMap[t.name] = t));
 
-    const strFields = objMap(tableMap, (table) => [
+    const strOptFields = objMap(tableMap, (table) => [
       "",
       ...table.fields
         .filter((f) => f.type?.name === "String")
         .map((f) => f.name),
     ]);
+    const strFields = objMap(tableMap, (table) =>
+      table.fields.filter((f) => f.type?.name === "String").map((f) => f.name)
+    );
 
     const dateFields = objMap(tableMap, (table) =>
       table.fields.filter((f) => f.type?.name === "Date").map((f) => f.name)
@@ -117,7 +111,7 @@ module.exports = (cfg) => ({
         label: "Location field",
         type: "String",
         attributes: {
-          calcOptions: ["table_dest", strFields],
+          calcOptions: ["table_dest", strOptFields],
         },
       },
       {
@@ -125,7 +119,7 @@ module.exports = (cfg) => ({
         label: "Calendar URL field",
         type: "String",
         attributes: {
-          calcOptions: ["table_dest", strFields],
+          calcOptions: ["table_dest", strOptFields],
         },
       },
       {
@@ -133,7 +127,7 @@ module.exports = (cfg) => ({
         label: "Description field",
         type: "String",
         attributes: {
-          calcOptions: ["table_dest", strFields],
+          calcOptions: ["table_dest", strOptFields],
         },
       },
       {
@@ -141,7 +135,7 @@ module.exports = (cfg) => ({
         label: "Categories field",
         type: "String",
         attributes: {
-          calcOptions: ["table_dest", strFields],
+          calcOptions: ["table_dest", strOptFields],
         },
       },
       {
@@ -191,7 +185,7 @@ module.exports = (cfg) => ({
 
     const table = await Table.findOne({ name: table_dest });
     const existingETags = await getExistingEtags(table, etag_field);
-    const all_events = await runQuery(calFlags, {}, {});
+    const all_events = await runQuery({ ...calFlags, ...cfg }, {}, {});
     const deleteEtags = new Set(existingETags);
     for (const e of all_events) {
       deleteEtags.delete(e.etag);

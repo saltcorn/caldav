@@ -98,6 +98,7 @@ const createKeyCache = {};
 
 const runQuery = async (cfg, where, opts) => {
   console.log("caldav where", where);
+  console.log("caldav cfg", cfg);
 
   const client = await getClient(cfg);
   const cals = await getCals(cfg, client);
