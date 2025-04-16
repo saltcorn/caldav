@@ -19,20 +19,6 @@ const {
   runQuery,
 } = require("./common");
 
-const objMap = (obj, f) => {
-  const result = {};
-  Object.keys(obj).forEach((k) => {
-    result[k] = f(obj[k]);
-  });
-  return result;
-};
-
-const getExistingEtags = async (table, etag_field) => {
-  const existing = await table.getRows({});
-  const existingETags = new Set(existing.map((e) => e[etag_field]));
-  return existingETags;
-};
-
 module.exports = (cfg) => ({
   requireRow: true,
   configFields: async ({ table }) => {
@@ -155,6 +141,8 @@ module.exports = (cfg) => ({
       ? eval_expression(only_if, row || {}, user, "caldav_add only_if")
       : true;
     if (!goahead) return;
+    console.log("inserting in caldav", row);
+
     const client = await getClient(cfg);
     const calendars = await getCals(cfg, client);
     const cal = calendars.find((c) => c.url === row[calendar_url_field]);
@@ -190,5 +178,11 @@ END:VCALENDAR`;
       filename,
       iCalString,
     });
+    console.log(
+      "caldav insert status",
+      result.status,
+      "response: ",
+      await result.text()
+    );
   },
 });
