@@ -173,6 +173,8 @@ module.exports = (cfg) => ({
       },
     ];
   },
+  disableInBuilder: true,
+  disableInList: true,
 
   run: async ({ row, configuration, req }) => {
     const {

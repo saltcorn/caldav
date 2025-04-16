@@ -54,7 +54,6 @@ module.exports = (cfg) => ({
 
     const triggers = await Trigger.find({});
     const client = await getClient(cfg);
-    const cals = await getCals(cfg, client);
 
     return [
       {
