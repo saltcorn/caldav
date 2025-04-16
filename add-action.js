@@ -141,7 +141,6 @@ module.exports = (cfg) => ({
       ? eval_expression(only_if, row || {}, user, "caldav_add only_if")
       : true;
     if (!goahead) return;
-    console.log("inserting in caldav", row);
 
     const client = await getClient(cfg);
     const calendars = await getCals(cfg, client);
@@ -160,6 +159,8 @@ module.exports = (cfg) => ({
       description: row[description_field],
       location: row[location_field],
       uid: id,
+      attendee: user.email,
+      organizer: user.email,
     };
     if (row[rrule_field]) evAttrs.rrule = row[rrule_field];
     const iCalString = `BEGIN:VCALENDAR
@@ -173,6 +174,7 @@ ${Object.entries(evAttrs)
   .join("\n")}
 END:VEVENT
 END:VCALENDAR`;
+    console.log("Insert CalDav", calendars[0].url, filename, iCalString);
     const result = await client.createCalendarObject({
       calendar: calendars[0],
       filename,
