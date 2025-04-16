@@ -96,6 +96,15 @@ const getEnd = (e) => {
 
 const createKeyCache = {};
 
+const getRRule = (odata) => {
+  const tzSplit = odata.split("END:VTIMEZONE");
+  const afterTz = tzSplit[tzSplit.length - 1];
+  const lines = afterTz.split("\n");
+  const line = lines.find((l) => l.startsWith("RRULE:"));
+  if (line) return line.replace("RRULE:", "");
+  else return null;
+};
+
 const runQuery = async (cfg, where, opts) => {
   //console.log("caldav where", where);
   //console.log("caldav cfg", cfg);
@@ -147,7 +156,7 @@ const runQuery = async (cfg, where, opts) => {
         console.error("iCal data:", o.data);
         continue;
       }
-
+      let recurrenceSet = false;
       for (const e of parsed.events) {
         //console.log("e", e);
 
@@ -167,8 +176,9 @@ const runQuery = async (cfg, where, opts) => {
           categories: e.categories?.value,
           all_day: allDayDuration(e),
         };
-        if (e.recurrenceRule) {
-          eo.rrule = e.recurrenceRule.toString();
+        if (e.recurrenceRule && !recurrenceSet) {
+          eo.rrule = getRRule(o.data); //e.recurrenceRule.toString();
+          recurrenceSet = true;
         }
         if (cfg.create_key_field) {
           if (createKeyCache[calendar.url])
