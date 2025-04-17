@@ -38,9 +38,6 @@ module.exports = (cfg) => ({
       .filter((f) => f.type?.name === "Bool")
       .map((f) => f.name);
 
-    const triggers = await Trigger.find({});
-    const client = await getClient(cfg);
-
     return [
       {
         name: "summary_field",
