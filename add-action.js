@@ -173,7 +173,7 @@ END:VEVENT
 END:VCALENDAR`;
     console.log("Insert CalDav", calendars[0].url, filename, iCalString);
     const result = await client.createCalendarObject({
-      calendar: calendars[0],
+      calendar: cal,
       filename,
       iCalString,
     });
