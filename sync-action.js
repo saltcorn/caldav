@@ -25,9 +25,11 @@ const objMap = (obj, f) => {
   return result;
 };
 
-const getExistingEtags = async (table, etag_field) => {
+const getExistingEtags = async (table, etag_field, url_field) => {
   const existing = await table.getRows({});
-  const existingETags = new Set(existing.map((e) => e[etag_field]));
+  const existingETags = new Set(
+    existing.map((e) => e[url_field] + "///" + e[etag_field])
+  );
   return existingETags;
 };
 
@@ -195,12 +197,13 @@ module.exports = (cfg) => ({
     } = configuration;
 
     const table = await Table.findOne({ name: table_dest });
-    const existingETags = await getExistingEtags(table, etag_field);
+    const existingETags = await getExistingEtags(table, etag_field, url_field);
     const all_events = await runQuery({ ...calFlags, ...cfg }, {}, {});
     const deleteEtags = new Set(existingETags);
     for (const e of all_events) {
-      deleteEtags.delete(e.etag);
-      if (existingETags.has(e.etag)) continue;
+      const tag = e[url_field] + "///" + e[etag_field];
+      deleteEtags.delete(tag);
+      if (existingETags.has(tag)) continue;
       // insert or update
       const row = {
         [url_field]: e.url,
@@ -220,6 +223,9 @@ module.exports = (cfg) => ({
         await table.updateRow(row, existingEvent[table.pk_name]);
       } else await table.insertRow(row);
     }
-    await table.deleteRows({ [etag_field]: { in: [...deleteEtags] } });
+    for (const delTag of [...deleteEtags]) {
+      const [del_url, del_etag] = delTag.split("///");
+      await table.deleteRows({ [etag_field]: del_etag, [url_field]: del_url });
+    }
   },
 });
