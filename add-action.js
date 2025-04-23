@@ -50,6 +50,14 @@ module.exports = (cfg) => ({
         },
       },
       {
+        name: "uid_field",
+        label: "UID field",
+        type: "String",
+        attributes: {
+          options: strFields,
+        },
+      },
+      {
         name: "summary_field",
         label: "Summary field",
         type: "String",
@@ -144,6 +152,7 @@ module.exports = (cfg) => ({
       error_action,
       only_if,
       url_field,
+      uid_field,
     } = configuration;
     const goahead = only_if
       ? eval_expression(only_if, row || {}, user, "caldav_add only_if")
@@ -166,7 +175,7 @@ module.exports = (cfg) => ({
       summary: row[summary_field],
       description: row[description_field],
       location: row[location_field],
-      uid: id,
+      uid: row[uid_field] ||id,
       attendee: user.email,
       organizer: user.email,
     };

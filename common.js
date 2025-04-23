@@ -175,6 +175,7 @@ const runQuery = async (cfg, where, opts) => {
           calendar_url: calendar.url,
           categories: e.categories?.value,
           all_day: allDayDuration(e),
+          uid: e.uid?.value
         };
         if (e.recurrenceRule && !recurrenceSet) {
           eo.rrule = getRRule(o.data); //e.recurrenceRule.toString();
