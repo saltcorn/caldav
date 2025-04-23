@@ -1,6 +1,6 @@
 {
   "name": "@saltcorn/caldav",
-  "version": "0.3.6",
+  "version": "0.4.0",
   "description": "Table provider for Caldav (Calendar events)",
   "main": "index.js",
   "dependencies": {
