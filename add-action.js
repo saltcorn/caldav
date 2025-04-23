@@ -40,6 +40,16 @@ module.exports = (cfg) => ({
 
     return [
       {
+        name: "url_field",
+        label: "Event URL field",
+        sublabel:
+          "If value in row is blank, this will insert; if set, will update",
+        type: "String",
+        attributes: {
+          options: strFields,
+        },
+      },
+      {
         name: "summary_field",
         label: "Summary field",
         type: "String",
@@ -133,6 +143,7 @@ module.exports = (cfg) => ({
       rrule_field,
       error_action,
       only_if,
+      url_field,
     } = configuration;
     const goahead = only_if
       ? eval_expression(only_if, row || {}, user, "caldav_add only_if")
@@ -147,7 +158,7 @@ module.exports = (cfg) => ({
     const filename = `event${id}.ics`;
     const date_to_str = (d) =>
       d.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
-
+    const event_url = row[url_field];
     const evAttrs = {
       dtstamp: date_to_str(new Date()),
       dtstart: date_to_str(row[start_field]),
@@ -171,12 +182,29 @@ ${Object.entries(evAttrs)
   .join("\n")}
 END:VEVENT
 END:VCALENDAR`;
-    console.log("Insert CalDav", cal.url, filename, iCalString);
-    const result = await client.createCalendarObject({
-      calendar: cal,
+    console.log(
+      (event_url ? "Update" : "Insert") + " CalDav",
+      cal.url,
       filename,
       iCalString,
-    });
+      event_url
+    );
+    let result;
+    if (event_url) {
+      result = await client.updateCalendarObject({
+        calendarObject: {
+          url: event_url,
+          data: iCalString,
+          //etag: '"63758758580"',
+        },
+      });
+    } else {
+      result = await client.createCalendarObject({
+        calendar: cal,
+        filename,
+        iCalString,
+      });
+    }
     console.log(
       "caldav insert status",
       result.status,
