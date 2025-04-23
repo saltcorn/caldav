@@ -101,7 +101,7 @@ const getRRule = (odata) => {
   const afterTz = tzSplit[tzSplit.length - 1];
   const lines = afterTz.split("\n");
   const line = lines.find((l) => l.startsWith("RRULE:"));
-  if (line) return line.replace("RRULE:", "");
+  if (line) return line.replace("RRULE:", "").trim();
   else return null;
 };
 
