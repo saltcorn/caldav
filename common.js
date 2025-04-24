@@ -1,6 +1,7 @@
 const Table = require("@saltcorn/data/models/table");
 const { createDAVClient } = require("tsdav");
 const ical = require("cal-parser");
+const moment = require("moment-timezone");
 
 let _allCals;
 
@@ -80,10 +81,10 @@ const allDayDuration = (e) => {
 };
 
 const getEnd = (e) => {
-  if (e.dtend?.value) return new Date(e.dtend?.value);
+  if (e.dtend?.value) return toUTC(e.dtend);
   if (!e.duration?.value || !e.dtstart?.value) return null;
   const d = e.duration?.value;
-  const start = new Date(e.dtstart?.value);
+  const start = toUTC(e.dtstart);
   if (/PT(\d+)M/.test(d)) {
     const mins = d.match(/PT(\d+)M/)[1];
     return new Date(start.getTime() + mins * 60000);
@@ -159,7 +160,11 @@ const runQuery = async (cfg, where, opts) => {
       let recurrenceSet = false;
       for (const e of parsed.events) {
         //console.log("e", e);
-
+       /* if (e.summary?.value === "test eventz") {
+          console.log(o.data);
+          console.log(e);
+        }*/
+        //moment().tz("America/Los_Angeles").zoneAbbr();
         const eo = {
           url: `${o.url}${
             e["recurrence-id"]?.value
@@ -170,12 +175,12 @@ const runQuery = async (cfg, where, opts) => {
           etag: o.etag,
           summary: e.summary?.value,
           description: e.description?.value,
-          start: e.dtstart?.value ? new Date(e.dtstart?.value) : null,
+          start: toUTC(e.dtstart),
           end: getEnd(e),
           calendar_url: calendar.url,
           categories: e.categories?.value,
           all_day: allDayDuration(e),
-          uid: e.uid?.value
+          uid: e.uid?.value,
         };
         if (e.recurrenceRule && !recurrenceSet) {
           eo.rrule = getRRule(o.data); //e.recurrenceRule.toString();
@@ -202,6 +207,17 @@ const runQuery = async (cfg, where, opts) => {
     }
   }
   return all_evs;
+};
+
+const toUTC = ({ value, params } = {}) => {
+  if (!value) return null;
+  if (!params?.tzid) return new Date(value);
+  //const tzAbbrev = moment().tz("America/Los_Angeles").zoneAbbr();
+  const dlocal = new Date(value);
+  const d = moment
+    .tz(dlocal.toISOString().split("Z")[0], params?.tzid)
+    .format(); // CST
+  return new Date(d);
 };
 
 module.exports = {
