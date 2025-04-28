@@ -25,10 +25,17 @@ const objMap = (obj, f) => {
   return result;
 };
 
-const getExistingEtags = async (table, etag_field, url_field) => {
+const getExistingEtags = async (
+  table,
+  { etag_field, url_field, calendar_url_field }
+) => {
   const existing = await table.getRows({});
   const existingETags = new Set(
-    existing.map((e) => e[url_field] + "///" + e[etag_field])
+    existing.map(
+      (e) =>
+        // we need all three because we want duplication of events with multiple participants
+        e[calendar_url_field] + "///" + e[url_field] + "///" + e[etag_field]
+    )
   );
   return existingETags;
 };
@@ -207,11 +214,12 @@ module.exports = (cfg) => ({
     } = configuration;
 
     const table = await Table.findOne({ name: table_dest });
-    const existingETags = await getExistingEtags(table, etag_field, url_field);
+    const existingETags = await getExistingEtags(table, configuration);
     const all_events = await runQuery({ ...calFlags, ...cfg }, {}, {});
     const deleteEtags = new Set(existingETags);
     for (const e of all_events) {
-      const tag = e[url_field] + "///" + e[etag_field];
+      const tag =
+        e[calendar_url_field] + "///" + e[url_field] + "///" + e[etag_field];
       deleteEtags.delete(tag);
       if (existingETags.has(tag)) continue;
       // insert or update
@@ -235,8 +243,12 @@ module.exports = (cfg) => ({
       } else await table.insertRow(row);
     }
     for (const delTag of [...deleteEtags]) {
-      const [del_url, del_etag] = delTag.split("///");
-      await table.deleteRows({ [etag_field]: del_etag, [url_field]: del_url });
+      const [cal_url, del_url, del_etag] = delTag.split("///");
+      await table.deleteRows({
+        [calendar_url_field]: cal_url,
+        [etag_field]: del_etag,
+        [url_field]: del_url,
+      });
     }
   },
 });
