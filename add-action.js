@@ -123,6 +123,16 @@ module.exports = (cfg) => ({
         },
       },
       {
+        name: "attendees_field",
+        label: "Attendees field",
+        sublabel:
+          "Should contain comma-separated list of email addresses of attendeed",
+        type: "String",
+        attributes: {
+          options: strOptFields,
+        },
+      },
+      {
         name: "only_if",
         label: "Only if",
         type: "String",
@@ -150,6 +160,7 @@ module.exports = (cfg) => ({
       all_day_field,
       rrule_field,
       error_action,
+      attendees_field,
       only_if,
       url_field,
       uid_field,
@@ -175,11 +186,21 @@ module.exports = (cfg) => ({
       summary: row[summary_field],
       description: row[description_field],
       location: row[location_field],
-      uid: row[uid_field] ||id,
+      uid: row[uid_field] || id,
       attendee: user.email,
       organizer: user.email,
     };
     if (row[rrule_field]) evAttrs.rrule = row[rrule_field];
+    let attendees = "";
+    if (attendees_field && row[attendees_field]) {
+      //https://stackoverflow.com/a/28835463/19839414
+      attendees =
+        "\n" +
+        row[attendees_field]
+          .split(",")
+          .map((s) => `ATTENDEE:${s.trim()}`)
+          .join("\n");
+    }
     const iCalString = `BEGIN:VCALENDAR
 VERSION:2.0
 PRODID:-//Saltcorn//EN
@@ -188,7 +209,7 @@ METHOD:REQUEST
 BEGIN:VEVENT
 ${Object.entries(evAttrs)
   .map(([k, v]) => `${k.toUpperCase()}:${v}`)
-  .join("\n")}
+  .join("\n")}${attendees}
 END:VEVENT
 END:VCALENDAR`;
     console.log(
