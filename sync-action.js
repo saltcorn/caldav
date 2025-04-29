@@ -239,7 +239,12 @@ module.exports = (cfg) => ({
       if (uid_field) row[uid_field] = e.uid;
       const existingEvent = await table.getRow({ [url_field]: e.url });
       if (existingEvent) {
-        await table.updateRow(row, existingEvent[table.pk_name]);
+        if (
+          Object.keys(row).filter(
+            (k) => row[k] !== existingEvent[table.pk_name]
+          ).length
+        )
+          await table.updateRow(row, existingEvent[table.pk_name]);
       } else await table.insertRow(row);
     }
     for (const delTag of [...deleteEtags]) {
