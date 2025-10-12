@@ -2,6 +2,7 @@ const Table = require("@saltcorn/data/models/table");
 const { createDAVClient } = require("tsdav");
 const ical = require("cal-parser");
 const moment = require("moment-timezone");
+const { getState } = require("@saltcorn/data/db/state");
 
 let _allCals;
 
@@ -33,7 +34,7 @@ const getTimeRange = (where) => {
   if (where?.start?.gt || where?.end?.gt) {
     timeRange = {};
     timeRange.start = new Date(
-      where?.start?.gt || where?.end?.gt
+      where?.start?.gt || where?.end?.gt,
     ).toISOString();
   }
   if (where?.start?.lt || where?.end?.lt) {
@@ -56,7 +57,7 @@ const includeCalendar = async (where, calendar, cfg) => {
     return false;
   if (cfg?.create_key_field && where[`${cfg.create_key_table_name}_key`]) {
     const cacheVal = Object.entries(createKeyCache).find(
-      ([url, id]) => id == where[`${cfg.create_key_table_name}_key`]
+      ([url, id]) => id == where[`${cfg.create_key_table_name}_key`],
     );
     if (cacheVal) return cacheVal[0] === calendar.url;
 
@@ -106,7 +107,71 @@ const getRRule = (odata) => {
   else return null;
 };
 
-const runQuery = async (cfg, where, opts) => {
+const handleObjects = async (objects, calendar, cfg) => {
+  const result = [];
+  for (const o of objects) {
+    let parsed;
+    try {
+      parsed = ical.parseString(o.data);
+    } catch (e) {
+      console.error(
+        "iCal parsing error on calendar",
+        calendar.url,
+        ":",
+        e.message,
+      );
+      console.error("iCal data:", o.data);
+      continue;
+    }
+    let recurrenceSet = false;
+    for (const e of parsed.events) {
+      //console.log("e", e);
+      /* if (e.summary?.value === "test eventz") {
+        console.log(o.data);
+        console.log(e);
+      }*/
+      //moment().tz("America/Los_Angeles").zoneAbbr();
+      const eo = {
+        url: `${o.url}${
+          e["recurrence-id"]?.value ? `#${e["recurrence-id"].value || ""}` : ""
+        }`,
+        location: e.location?.value,
+        etag: o.etag,
+        summary: e.summary?.value,
+        description: e.description?.value,
+        start: toUTC(e.dtstart),
+        end: getEnd(e),
+        calendar_url: calendar.url,
+        categories: e.categories?.value,
+        all_day: allDayDuration(e),
+        uid: e.uid?.value,
+      };
+      if (e.recurrenceRule && !recurrenceSet) {
+        eo.rrule = getRRule(o.data); //e.recurrenceRule.toString();
+        recurrenceSet = true;
+      }
+      if (cfg.create_key_field) {
+        if (createKeyCache[calendar.url])
+          eo[`${cfg.create_key_table_name}_key`] = createKeyCache[calendar.url];
+        else {
+          const table = Table.findOne(cfg.create_key_table_name);
+          const row = await table.getRow({
+            [cfg.create_key_field_name]: calendar.url,
+          });
+          if (row) {
+            const id = row[table.pk_name];
+            eo[`${cfg.create_key_table_name}_key`] = id;
+            createKeyCache[calendar.url] = id;
+          }
+        }
+      }
+      result.push(eo);
+    }
+  }
+  return result;
+};
+
+const runQueryLegacy = async (cfg, where, opts) => {
   //console.log("caldav where", where);
   //console.log("caldav cfg", cfg);
 
@@ -128,7 +193,7 @@ const runQuery = async (cfg, where, opts) => {
       const resp = await fetch(url, {
         headers: new Headers({
           Authorization: `Basic ${Buffer.from(
-            `${cfg.username}:${cfg.password}`
+            `${cfg.username}:${cfg.password}`,
           ).toString("base64")}`,
         }),
       });
@@ -152,7 +217,7 @@ const runQuery = async (cfg, where, opts) => {
           "iCal parsing error on calendar",
           calendar.url,
           ":",
-          e.message
+          e.message,
         );
         console.error("iCal data:", o.data);
         continue;
@@ -160,7 +225,7 @@ const runQuery = async (cfg, where, opts) => {
       let recurrenceSet = false;
       for (const e of parsed.events) {
         //console.log("e", e);
-       /* if (e.summary?.value === "test eventz") {
+        /* if (e.summary?.value === "test eventz") {
           console.log(o.data);
           console.log(e);
         }*/
@@ -209,6 +274,155 @@ const runQuery = async (cfg, where, opts) => {
   return all_evs;
 };
 
+const runQuery = async (cfg, where, opts) => {
+  const result = {};
+  const client = await getClient(cfg);
+  const cals = await getCals(cfg, client);
+
+  const { created, updated, deleted } = await client.syncCalendars({
+    oldCalendars: cals.map((lc) => ({
+      url: lc.url,
+      displayName: lc.name,
+      ...(opts?.syncInfos && opts.syncInfos[lc.url]
+        ? opts.syncInfos[lc.url]
+        : {}),
+    })),
+    detailedResult: true,
+  });
+
+  // handle created calendars (full sync)
+  const timeRange = getTimeRange(where);
+  for (const createdCal of created.filter(
+    (c) => cfg[`cal_${encodeURIComponent(c.url)}`],
+  )) {
+    if (!(await includeCalendar(where, createdCal, cfg))) continue;
+    getState().log(5, `Full sync of new CalDAV calendar ${createdCal.url}`);
+    let objects;
+    if (
+      typeof where?.url === "string" ||
+      typeof where?.url?.ilike === "string"
+    ) {
+      const url = (where.url?.ilike || where.url).split("#")[0];
+      const resp = await fetch(url, {
+        headers: new Headers({
+          Authorization: `Basic ${Buffer.from(
+            `${cfg.username}:${cfg.password}`,
+          ).toString("base64")}`,
+        }),
+      });
+      objects = [{ url, data: await resp.text() }];
+    } else
+      objects = await client.fetchCalendarObjects({
+        calendar: createdCal,
+        timeRange,
+        useMultiGet: false,
+      });
+    const createdEvents = await handleObjects(objects, createdCal, cfg);
+    result[createdCal.url] = {
+      created: createdEvents,
+      updated: [],
+      deleted: [],
+      syncToken: createdCal.syncToken,
+      ctag: createdCal.ctag,
+      fullSync: true,
+    };
+  }
+
+  // handle updated calendars (incremental sync if syncToken present)
+  for (const updatedCal of updated.filter(
+    (c) => cfg[`cal_${encodeURIComponent(c.url)}`],
+  )) {
+    if (!(await includeCalendar(where, updatedCal, cfg))) continue;
+    getState().log(5, `Sync of updated CalDAV calendar ${updatedCal.url}`);
+    const calendarUrl = updatedCal.url;
+    const isFullSync = !(
+      opts?.syncInfos?.[calendarUrl] && opts.syncInfos[calendarUrl].syncToken
+    );
+    const oldObjects = isFullSync
+      ? []
+      : opts?.eventLookup && opts.eventLookup[calendarUrl]
+        ? opts?.eventLookup && opts.eventLookup[calendarUrl]
+        : [];
+    const syncInfos = isFullSync
+      ? {}
+      : opts?.syncInfos && opts.syncInfos[calendarUrl]
+        ? opts.syncInfos[calendarUrl]
+        : {};
+    result[calendarUrl] = {
+      created: [],
+      updated: [],
+      deleted: [],
+      syncToken: updatedCal.syncToken,
+      ctag: updatedCal.ctag,
+      fullSync: isFullSync,
+    };
+
+    const {
+      created: createdObjects,
+      updated: updatedObjects,
+      deleted: deletedObjects,
+    } = (
+      await client.smartCollectionSync({
+        collection: {
+          url: calendarUrl,
+          ...syncInfos,
+          objects: oldObjects,
+          objectMultiGet: client.calendarMultiGet,
+        },
+        method: "webdav",
+        detailedResult: true,
+      })
+    ).objects;
+
+    getState().log(
+      5,
+      `SmartCollectionSync of ${calendarUrl}: ${createdObjects.length} created, ${updatedObjects.length} updated, ${deletedObjects.length} deleted`,
+    );
+    if (createdObjects.length > 0) {
+      result[calendarUrl].created = await handleObjects(
+        createdObjects,
+        updatedCal,
+        cfg,
+      );
+    }
+
+    if (updatedObjects.length > 0) {
+      result[calendarUrl].updated = await handleObjects(
+        updatedObjects,
+        updatedCal,
+        cfg,
+      );
+    }
+
+    if (deletedObjects.length > 0) {
+      result[calendarUrl].deleted = deletedObjects.map((o) => ({
+        url: o.url,
+        etag: o.etag,
+        calendar_url: calendarUrl,
+      }));
+    }
+  }
+
+  // handle deleted calendars
+  for (const deletedCal of deleted.filter(
+    (c) => cfg[`cal_${encodeURIComponent(c.url)}`],
+  )) {
+    if (!(await includeCalendar(where, deletedCal, cfg))) continue;
+    const calendarUrl = deletedCal.url;
+    getState().log(5, `CalDAV calendar deleted ${calendarUrl}`);
+    if (opts?.eventLookup && opts.eventLookup[calendarUrl]) {
+      const calEvents = opts.eventLookup[calendarUrl];
+      result[calendarUrl].deleted = calEvents.map((e) => ({
+        url: e.url,
+        etag: e.etag,
+        calendar_url: calendarUrl,
+      }));
+    }
+  }
+
+  return result;
+};
+
 const toUTC = ({ value, params } = {}) => {
   if (!value) return null;
   if (!params?.tzid) return new Date(value);
@@ -229,4 +443,5 @@ module.exports = {
   includeCalendar,
   getTimeRange,
   runQuery,
+  runQueryLegacy,
 };

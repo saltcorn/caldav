@@ -20,7 +20,7 @@ const {
   includeCalendar,
   getTimeRange,
   createKeyCache,
-  runQuery,
+  runQueryLegacy,
 } = require("./common");
 
 const configuration_workflow = (cfg) => (req) =>
@@ -162,7 +162,11 @@ module.exports = (cfg) => ({
     get_table: (cfgTable) => {
       return {
         getRows: async (where, opts) => {
-          const qres = await runQuery({ ...cfg, ...cfgTable }, where, opts);
+          const qres = await runQueryLegacy(
+            { ...cfg, ...cfgTable },
+            where,
+            opts,
+          );
           return qres;
         },
         countRows: async (where, opts) => {
