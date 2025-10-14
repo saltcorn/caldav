@@ -390,25 +390,28 @@ module.exports = (cfg) => ({
       {
         name: "sync_token_field",
         label: "Sync token field",
+        sublabel: "Field in calendar info table to hold sync token",
         type: "String",
         attributes: {
-          calcOptions: ["calendar_info_table", strOptFields],
+          calcOptions: ["calendar_info_table", strFields],
         },
       },
       {
         name: "ctag_field",
         label: "Ctag field",
+        sublabel: "Field in calendar info table to hold ctag",
         type: "String",
         attributes: {
-          calcOptions: ["calendar_info_table", strOptFields],
+          calcOptions: ["calendar_info_table", strFields],
         },
       },
       {
         name: "calendar_info_url_field",
-        label: "Calendar info URL field",
+        label: "Calendar URL field",
+        sublabel: "Field in calendar info table to hold calendar URL",
         type: "String",
         attributes: {
-          calcOptions: ["calendar_info_table", strOptFields],
+          calcOptions: ["calendar_info_table", strFields],
         },
       },
     ];
@@ -439,14 +442,18 @@ module.exports = (cfg) => ({
       ...calFlags
     } = configuration;
     const destTbl = Table.findOne({ name: table_dest });
-    const infoTbl = Table.findOne({ name: calendar_info_table });
-    const syncInfos = await getSyncInfos({
-      calendar_info_table,
-      sync_token_field,
-      ctag_field,
-      calendar_info_url_field,
-      ...calFlags,
-    });
+    let infoTbl = null;
+    let syncInfos = null;
+    if (calendar_info_table) {
+      infoTbl = Table.findOne({ name: calendar_info_table });
+      syncInfos = await getSyncInfos({
+        calendar_info_table,
+        sync_token_field,
+        ctag_field,
+        calendar_info_url_field,
+        ...calFlags,
+      });
+    }
     const eventLookup = await buildEventLookup(destTbl, configuration);
     await deleteUnsyncedCalendars(
       destTbl,
@@ -480,7 +487,8 @@ module.exports = (cfg) => ({
           configuration,
         );
       }
-      await updateSyncInfos(infoTbl, calendarUrl, configuration, syncData);
+      if (infoTbl)
+        await updateSyncInfos(infoTbl, calendarUrl, configuration, syncData);
     }
   },
 });
