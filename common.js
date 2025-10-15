@@ -397,7 +397,6 @@ const runQuery = async (cfg, where, opts) => {
     if (deletedObjects.length > 0) {
       result[calendarUrl].deleted = deletedObjects.map((o) => ({
         url: o.url,
-        etag: o.etag,
         calendar_url: calendarUrl,
       }));
     }

@@ -187,6 +187,13 @@ const incrementalSync = async (
     ),
   );
 
+  // uids + calendar_url (without version identifier)
+  const uniqueEventIdentifier = new Set(
+    existing
+      .map((e) => e[uid_field] + "///" + e[calendar_url_field])
+      .filter((u) => u && u.length > 0),
+  );
+
   // new inserts
   for (const created of syncData.created) {
     if (
@@ -195,6 +202,17 @@ const incrementalSync = async (
       )
     )
       continue;
+    if (
+      created.uid &&
+      uniqueEventIdentifier.has(created.uid + "///" + created.calendar_url)
+    ) {
+      // delete old versions in the same calendar, the above check already ensures the tag is different
+      await destTbl.deleteRows({
+        [uid_field]: created.uid,
+        [calendar_url_field]: created.calendar_url,
+      });
+    }
+
     const row = {
       [url_field]: created.url,
       [summary_field]: created.summary,
@@ -225,7 +243,6 @@ const incrementalSync = async (
   for (const deleted of syncData.deleted) {
     await destTbl.deleteRows({
       [calendar_url_field]: deleted.calendar_url,
-      [etag_field]: deleted.etag,
       [url_field]: deleted.url,
     });
   }
