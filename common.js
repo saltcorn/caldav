@@ -274,6 +274,16 @@ const runQueryLegacy = async (cfg, where, opts) => {
   return all_evs;
 };
 
+const refetchObjects = async (client, calendar, timeRange, objectUrls) => {
+  const objects = await client.fetchCalendarObjects({
+    calendar,
+    timeRange,
+    objectUrls,
+    useMultiGet: true,
+  });
+  return objects;
+};
+
 const runQuery = async (cfg, where, opts) => {
   const result = {};
   const client = await getClient(cfg);
@@ -379,23 +389,44 @@ const runQuery = async (cfg, where, opts) => {
       `SmartCollectionSync of ${calendarUrl}: ${createdObjects.length} created, ${updatedObjects.length} updated, ${deletedObjects.length} deleted`,
     );
     if (createdObjects.length > 0) {
+      const refetched = await refetchObjects(
+        client,
+        updatedCal,
+        timeRange,
+        createdObjects.map((o) => o.url),
+      );
       result[calendarUrl].created = await handleObjects(
-        createdObjects,
+        // refetch for full eventUrls (not only pathname)
+        refetched,
         updatedCal,
         cfg,
       );
     }
 
     if (updatedObjects.length > 0) {
+      // refetch for full eventUrls (not only pathname)
+      const refetched = await refetchObjects(
+        client,
+        updatedCal,
+        timeRange,
+        updatedObjects.map((o) => o.url),
+      );
       result[calendarUrl].updated = await handleObjects(
-        updatedObjects,
+        refetched,
         updatedCal,
         cfg,
       );
     }
 
     if (deletedObjects.length > 0) {
-      result[calendarUrl].deleted = deletedObjects.map((o) => ({
+      // refetch for full eventUrls (not only pathname)
+      const refetched = await refetchObjects(
+        client,
+        updatedCal,
+        timeRange,
+        deletedObjects.map((o) => o.url),
+      );
+      result[calendarUrl].deleted = refetched.map((o) => ({
         url: o.url,
         calendar_url: calendarUrl,
       }));
