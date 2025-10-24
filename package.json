@@ -7,6 +7,8 @@
     "@saltcorn/markup": "^1.0.0",
     "@saltcorn/data": "^1.0.0",
     "tsdav": "2.1.5",
+    "ical.js": "^2.2.1",
+    "windows-iana": "5.0.0-alpha.1",
     "cal-parser": "1.0.2",
     "node-fetch": "2.6.9",
     "moment": "2.30.1",

@@ -1,6 +1,8 @@
 const Table = require("@saltcorn/data/models/table");
 const { createDAVClient } = require("tsdav");
 const ical = require("cal-parser");
+const ICAL = require("ical.js");
+const { findIana } = require("windows-iana");
 const moment = require("moment-timezone");
 const { getState } = require("@saltcorn/data/db/state");
 
@@ -74,18 +76,40 @@ const includeCalendar = async (where, calendar, cfg) => {
   return true;
 };
 
-const allDayDuration = (e) => {
+const allDayDurationLegacy = (e) => {
   if (e.dtstart?.params?.value === "DATE" && e.dtend?.params?.value === "DATE")
     return true;
   if (!e.duration?.value) return false;
   return /P\d+D/.test(e.duration.value.test);
 };
 
-const getEnd = (e) => {
-  if (e.dtend?.value) return toUTC(e.dtend);
+const getEndLegacy = (e) => {
+  if (e.dtend?.value) return toUTCLegacy(e.dtend);
   if (!e.duration?.value || !e.dtstart?.value) return null;
   const d = e.duration?.value;
-  const start = toUTC(e.dtstart);
+  const start = toUTCLegacy(e.dtstart);
+  if (/PT(\d+)M/.test(d)) {
+    const mins = d.match(/PT(\d+)M/)[1];
+    return new Date(start.getTime() + mins * 60000);
+  }
+  if (/PT(\d+)H/.test(d)) {
+    const hrs = d.match(/PT(\d+)H/)[1];
+    return new Date(start.getTime() + hrs * 60000 * 60);
+  }
+};
+
+const allDayDuration = (e) => {
+  if (e.startDate?.isDate && e.endDate?.isDate) return true;
+  if (!e.duration) return false;
+  return /P\d+D/.test(e.duration.toString());
+};
+
+const getEnd = (e) => {
+  if (e.endDate)
+    return toUTC(e.endDate.toJSDate().valueOf(), e.endDate.zone.tzid);
+  if (!e.duration || !e.startDate) return null;
+  const d = e.duration.toString();
+  const start = toUTC(e.startDate.toJSDate().valueOf(), e.startDate.zone.tzid);
   if (/PT(\d+)M/.test(d)) {
     const mins = d.match(/PT(\d+)M/)[1];
     return new Date(start.getTime() + mins * 60000);
@@ -110,9 +134,9 @@ const getRRule = (odata) => {
 const handleObjects = async (objects, calendar, cfg) => {
   const result = [];
   for (const o of objects) {
-    let parsed;
+    let component;
     try {
-      parsed = ical.parseString(o.data);
+      component = new ICAL.Component(ICAL.parse(o.data));
     } catch (e) {
       console.error(
         "iCal parsing error on calendar",
@@ -124,7 +148,9 @@ const handleObjects = async (objects, calendar, cfg) => {
       continue;
     }
     let recurrenceSet = false;
-    for (const e of parsed.events) {
+
+    for (const subComp of component.getAllSubcomponents("vevent")) {
+      const e = new ICAL.Event(subComp);
       //console.log("e", e);
       /* if (e.summary?.value === "test eventz") {
         console.log(o.data);
@@ -132,21 +158,36 @@ const handleObjects = async (objects, calendar, cfg) => {
       }*/
       //moment().tz("America/Los_Angeles").zoneAbbr();
       const eo = {
-        url: `${o.url}${
-          e["recurrence-id"]?.value ? `#${e["recurrence-id"].value || ""}` : ""
-        }`,
-        location: e.location?.value,
+        url: `${o.url}${e.recurrenceId ? `#${e.recurrenceId || ""}` : ""}`,
+        location: e.location,
         etag: o.etag,
-        summary: e.summary?.value,
-        description: e.description?.value,
-        start: toUTC(e.dtstart),
+        summary: e.summary,
+        description: e.description,
+        start: toUTC(e.startDate.toJSDate().valueOf(), e.startDate.zone.tzid),
         end: getEnd(e),
         calendar_url: calendar.url,
-        categories: e.categories?.value,
+        categories: subComp
+          .getAllProperties("categories")
+          .flatMap((c) => c.getFirstValue().split(","))
+          .map((s) => s.trim())
+          .join(", "),
         all_day: allDayDuration(e),
-        uid: e.uid?.value,
+        uid: e.uid,
       };
-      if (e.recurrenceRule && !recurrenceSet) {
+      const attendeesProps = subComp.getAllProperties("attendee");
+      if (attendeesProps?.length > 0) {
+        eo.attendees = attendeesProps.map((a) => {
+          const email = a.getFirstValue().replace(/^mailto:/i, "");
+          return {
+            email,
+            cn: a.getParameter("cn") || null,
+            partstat: a.getParameter("partstat") || null,
+            rsvp: a.getParameter("rsvp") || null,
+          };
+        });
+      }
+
+      if (subComp.getAllProperties("rrule").length > 0 && !recurrenceSet) {
         eo.rrule = getRRule(o.data); //e.recurrenceRule.toString();
         recurrenceSet = true;
       }
@@ -240,11 +281,11 @@ const runQueryLegacy = async (cfg, where, opts) => {
           etag: o.etag,
           summary: e.summary?.value,
           description: e.description?.value,
-          start: toUTC(e.dtstart),
-          end: getEnd(e),
+          start: toUTCLegacy(e.dtstart),
+          end: getEndLegacy(e),
           calendar_url: calendar.url,
           categories: e.categories?.value,
-          all_day: allDayDuration(e),
+          all_day: allDayDurationLegacy(e),
           uid: e.uid?.value,
         };
         if (e.recurrenceRule && !recurrenceSet) {
@@ -453,7 +494,22 @@ const runQuery = async (cfg, where, opts) => {
   return result;
 };
 
-const toUTC = ({ value, params } = {}) => {
+const toUTC = (value, tzid) => {
+  if (!value) return null;
+  if (!tzid) return new Date(value);
+  //const tzAbbrev = moment().tz("America/Los_Angeles").zoneAbbr();
+  const dlocal = new Date(value);
+  const ianaTz = findIana(tzid);
+  const d = moment
+    .tz(
+      dlocal.toISOString().split("Z")[0],
+      ianaTz.length > 0 ? ianaTz[0] : "UTC",
+    )
+    .format(); // CST
+  return new Date(d);
+};
+
+const toUTCLegacy = ({ value, params } = {}) => {
   if (!value) return null;
   if (!params?.tzid) return new Date(value);
   //const tzAbbrev = moment().tz("America/Los_Angeles").zoneAbbr();

@@ -103,6 +103,8 @@ const fullSync = async (calendarUrl, syncData, eventLookup, configuration) => {
     all_day_field,
     etag_field,
     rrule_field,
+    attendees_field,
+    attendee_params_field,
     uid_field,
   } = configuration;
   const table = Table.findOne({ name: table_dest });
@@ -132,6 +134,14 @@ const fullSync = async (calendarUrl, syncData, eventLookup, configuration) => {
       [etag_field]: event.etag,
       [all_day_field]: event.all_day,
     };
+
+    if (attendees_field && event.attendees?.length > 0) {
+      row[attendees_field] = event.attendees.map((a) => a.email).join(", ");
+    }
+    if (attendee_params_field && event.attendees?.length > 0) {
+      row[attendee_params_field] = event.attendees;
+    }
+
     if (rrule_field) row[rrule_field] = event.rrule;
     if (uid_field) row[uid_field] = event.uid;
     const existingEvent = await table.getRow({ [url_field]: event.url });
@@ -174,6 +184,8 @@ const incrementalSync = async (
     all_day_field,
     etag_field,
     rrule_field,
+    attendees_field,
+    attendee_params_field,
     uid_field,
   } = configuration;
   const destTbl = Table.findOne({ name: table_dest });
@@ -226,6 +238,14 @@ const incrementalSync = async (
       [all_day_field]: created.all_day,
     };
     if (rrule_field) row[rrule_field] = created.rrule;
+
+    if (attendees_field && created.attendees?.length > 0) {
+      row[attendees_field] = created.attendees.map((a) => a.value).join(", ");
+    }
+    if (attendee_params_field && created.attendees?.length > 0) {
+      row[attendee_params_field] = created.attendees;
+    }
+
     if (uid_field) row[uid_field] = created.uid;
     await destTbl.insertRow(row);
   }
@@ -270,6 +290,10 @@ module.exports = (cfg) => ({
     const boolFields = objMap(tableMap, (table) =>
       table.fields.filter((f) => f.type?.name === "Bool").map((f) => f.name),
     );
+    const jsonFields = objMap(tableMap, (table) => [
+      "",
+      ...table.fields.filter((f) => f.type?.name === "JSON").map((f) => f.name),
+    ]);
     const triggers = await Trigger.find({});
     const client = await getClient(cfg);
     const cals = await getCals(cfg, client);
@@ -381,6 +405,24 @@ module.exports = (cfg) => ({
         },
       },
       {
+        name: "attendees_field",
+        label: "Attendees field",
+        sublabel: "comma-separated list of email addresses of attendeed",
+        type: "String",
+        attributes: {
+          calcOptions: ["table_dest", strOptFields],
+        },
+      },
+      {
+        name: "attendee_params_field",
+        label: "Attendee parameters field",
+        sublabel: "JSON object with parameters per attendee email address",
+        type: "String",
+        attributes: {
+          calcOptions: ["table_dest", jsonFields],
+        },
+      },
+      {
         name: "all_day_field",
         label: "All day field",
         type: "String",
@@ -454,6 +496,8 @@ module.exports = (cfg) => ({
       all_day_field,
       etag_field,
       rrule_field,
+      attendees_field,
+      attendee_params_field,
       error_action,
       uid_field,
       ...calFlags
