@@ -48,7 +48,7 @@ const getSyncInfos = async (cfg) => {
   const result = {};
   for (const e of existing) {
     const calUrl = e[calendar_info_url_field];
-    if (!calUrl || !cfg[`cal_${encodeURIComponent(calUrl)}`]) continue;
+    if (!calUrl) continue;
     result[e[calendar_info_url_field]] = {
       syncToken: e[sync_token_field],
       ctag: e[ctag_field],
@@ -75,13 +75,10 @@ const updateSyncInfos = async (
 const deleteUnsyncedCalendars = async (
   destTbl,
   eventLookup,
-  calFlags,
   { calendar_url_field },
 ) => {
   const lookupKeys = Object.keys(eventLookup);
   for (const url of lookupKeys) {
-    const cfgUrl = `cal_${encodeURIComponent(url)}`;
-    if (calFlags[cfgUrl]) continue;
     getState().log(5, `Deleting events for unsynced calendar ${url}`);
     await destTbl.deleteRows({
       [calendar_url_field]: url,
@@ -296,15 +293,8 @@ module.exports = (cfg) => ({
     ]);
     const triggers = await Trigger.find({});
     const client = await getClient(cfg);
-    const cals = await getCals(cfg, client);
 
     return [
-      ...cals.map((c) => ({
-        name: `cal_${encodeURIComponent(c.url)}`,
-        label: c.displayName,
-        sublabel: c.url,
-        type: "Bool",
-      })),
       {
         name: "table_dest",
         label: "Destination table",
@@ -485,22 +475,6 @@ module.exports = (cfg) => ({
       sync_token_field,
       ctag_field,
       calendar_info_url_field,
-      url_field,
-      summary_field,
-      start_field,
-      end_field,
-      location_field,
-      calendar_url_field,
-      description_field,
-      categories_field,
-      all_day_field,
-      etag_field,
-      rrule_field,
-      attendees_field,
-      attendee_params_field,
-      error_action,
-      uid_field,
-      ...calFlags
     } = configuration;
     const destTbl = Table.findOne({ name: table_dest });
     let infoTbl = null;
@@ -512,18 +486,12 @@ module.exports = (cfg) => ({
         sync_token_field,
         ctag_field,
         calendar_info_url_field,
-        ...calFlags,
       });
     }
     const eventLookup = await buildEventLookup(destTbl, configuration);
-    await deleteUnsyncedCalendars(
-      destTbl,
-      eventLookup,
-      calFlags,
-      configuration,
-    );
+    await deleteUnsyncedCalendars(destTbl, eventLookup, configuration);
     const syncResult = await runQuery(
-      { ...calFlags, ...cfg },
+      { ...cfg },
       {},
       { syncInfos, eventLookup },
     );
