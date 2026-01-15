@@ -217,10 +217,8 @@ const runQueryLegacy = async (cfg, where, opts) => {
   //console.log("caldav cfg", cfg);
 
   const client = await getClient(cfg);
-  const cals = await getCals(cfg, client);
-  const calendars = cals.filter((c) => cfg[`cal_${encodeURIComponent(c.url)}`]);
   const all_evs = [];
-  for (const calendar of calendars) {
+  for (const calendar of await getCals(cfg, client)) {
     if (!(await includeCalendar(where, calendar, cfg))) continue;
 
     let timeRange = getTimeRange(where);
@@ -343,9 +341,9 @@ const runQuery = async (cfg, where, opts) => {
 
   // handle created calendars (full sync)
   const timeRange = getTimeRange(where);
-  for (const createdCal of created.filter(
-    (c) => cfg[`cal_${encodeURIComponent(c.url)}`],
-  )) {
+  for (const createdCal of created) {
+    console.log("Created calendar detected:", createdCal.url);
+
     if (!(await includeCalendar(where, createdCal, cfg))) continue;
     getState().log(5, `Full sync of new CalDAV calendar ${createdCal.url}`);
     let objects;
@@ -380,9 +378,9 @@ const runQuery = async (cfg, where, opts) => {
   }
 
   // handle updated calendars (incremental sync if syncToken present)
-  for (const updatedCal of updated.filter(
-    (c) => cfg[`cal_${encodeURIComponent(c.url)}`],
-  )) {
+  for (const updatedCal of updated) {
+    console.log("Updated calendar detected:", updatedCal.url);
+
     if (!(await includeCalendar(where, updatedCal, cfg))) continue;
     getState().log(5, `Sync of updated CalDAV calendar ${updatedCal.url}`);
     const calendarUrl = updatedCal.url;
@@ -475,9 +473,9 @@ const runQuery = async (cfg, where, opts) => {
   }
 
   // handle deleted calendars
-  for (const deletedCal of deleted.filter(
-    (c) => cfg[`cal_${encodeURIComponent(c.url)}`],
-  )) {
+  for (const deletedCal of deleted) {
+    console.log("Deleted calendar detected:", deletedCal.url);
+
     if (!(await includeCalendar(where, deletedCal, cfg))) continue;
     const calendarUrl = deletedCal.url;
     getState().log(5, `CalDAV calendar deleted ${calendarUrl}`);
