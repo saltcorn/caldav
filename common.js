@@ -8,6 +8,10 @@ const { getState } = require("@saltcorn/data/db/state");
 
 let _allCals;
 
+const resetCache = () => {
+  _allCals = undefined;
+};
+
 const getClient = async ({ username, password, auth_method, url }) => {
   //console.log({ url });
 
@@ -134,17 +138,21 @@ const getRRule = (odata) => {
 const handleObjects = async (objects, calendar, cfg) => {
   const result = [];
   for (const o of objects) {
+    if (!o.data) {
+      getState().log(
+        6,
+        `Skipping calendar object without data: ${o.url} in ${calendar.url}`,
+      );
+      continue;
+    }
     let component;
     try {
       component = new ICAL.Component(ICAL.parse(o.data));
     } catch (e) {
-      console.error(
-        "iCal parsing error on calendar",
-        calendar.url,
-        ":",
-        e.message,
+      getState().log(
+        1,
+        `iCal parsing error in ${calendar.url}: ${e.message} (url: ${o.url})`,
       );
-      console.error("iCal data:", o.data);
       continue;
     }
     let recurrenceSet = false;
@@ -328,21 +336,52 @@ const runQuery = async (cfg, where, opts) => {
   const client = await getClient(cfg);
   const cals = await getCals(cfg, client);
 
-  const { created, updated, deleted } = await client.syncCalendars({
-    oldCalendars: cals.map((lc) => ({
+  // Filter calendars to only allowed URLs before contacting the server
+  const allowedUrls = opts?.allowedUrls;
+  const filteredCals = allowedUrls
+    ? cals.filter((c) => allowedUrls.has(c.url))
+    : cals;
+
+  getState().log(
+    6,
+    `CalDAV: ${cals.length} calendars on server, ${filteredCals.length} allowed for sync`,
+  );
+
+  const oldCalendars = filteredCals.map((lc) => {
+    const info =
+      opts?.syncInfos && opts.syncInfos[lc.url]
+        ? opts.syncInfos[lc.url]
+        : {};
+    return {
       url: lc.url,
       displayName: lc.name,
-      ...(opts?.syncInfos && opts.syncInfos[lc.url]
-        ? opts.syncInfos[lc.url]
-        : {}),
-    })),
+      // only spread syncToken/ctag if they are truthy (not empty string)
+      ...(info.syncToken ? { syncToken: info.syncToken } : {}),
+      ...(info.ctag ? { ctag: info.ctag } : {}),
+    };
+  });
+
+  // Store for debug output
+  if (opts) opts._debugOldCalendars = oldCalendars;
+
+  const { created, updated, deleted } = await client.syncCalendars({
+    oldCalendars,
     detailedResult: true,
   });
+
+  // Store for debug output
+  if (opts) {
+    opts._debugSyncResult = {
+      created: created.map((c) => c.url),
+      updated: updated.map((c) => c.url),
+      deleted: deleted.map((c) => c.url),
+    };
+  }
 
   // handle created calendars (full sync)
   const timeRange = getTimeRange(where);
   for (const createdCal of created) {
-    console.log("Created calendar detected:", createdCal.url);
+    if (allowedUrls && !allowedUrls.has(createdCal.url)) continue;
 
     if (!(await includeCalendar(where, createdCal, cfg))) continue;
     getState().log(5, `Full sync of new CalDAV calendar ${createdCal.url}`);
@@ -379,7 +418,7 @@ const runQuery = async (cfg, where, opts) => {
 
   // handle updated calendars (incremental sync if syncToken present)
   for (const updatedCal of updated) {
-    console.log("Updated calendar detected:", updatedCal.url);
+    if (allowedUrls && !allowedUrls.has(updatedCal.url)) continue;
 
     if (!(await includeCalendar(where, updatedCal, cfg))) continue;
     getState().log(5, `Sync of updated CalDAV calendar ${updatedCal.url}`);
@@ -458,14 +497,7 @@ const runQuery = async (cfg, where, opts) => {
     }
 
     if (deletedObjects.length > 0) {
-      // refetch for full eventUrls (not only pathname)
-      const refetched = await refetchObjects(
-        client,
-        updatedCal,
-        timeRange,
-        deletedObjects.map((o) => o.url),
-      );
-      result[calendarUrl].deleted = refetched.map((o) => ({
+      result[calendarUrl].deleted = deletedObjects.map((o) => ({
         url: o.url,
         calendar_url: calendarUrl,
       }));
@@ -474,11 +506,19 @@ const runQuery = async (cfg, where, opts) => {
 
   // handle deleted calendars
   for (const deletedCal of deleted) {
-    console.log("Deleted calendar detected:", deletedCal.url);
+    if (allowedUrls && !allowedUrls.has(deletedCal.url)) continue;
 
     if (!(await includeCalendar(where, deletedCal, cfg))) continue;
     const calendarUrl = deletedCal.url;
     getState().log(5, `CalDAV calendar deleted ${calendarUrl}`);
+    result[calendarUrl] = {
+      created: [],
+      updated: [],
+      deleted: [],
+      syncToken: null,
+      ctag: null,
+      fullSync: false,
+    };
     if (opts?.eventLookup && opts.eventLookup[calendarUrl]) {
       const calEvents = opts.eventLookup[calendarUrl];
       result[calendarUrl].deleted = calEvents.map((e) => ({
@@ -528,4 +568,5 @@ module.exports = {
   getTimeRange,
   runQuery,
   runQueryLegacy,
+  resetCache,
 };

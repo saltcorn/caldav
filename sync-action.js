@@ -1,3 +1,5 @@
+const fs = require("fs");
+const path = require("path");
 const db = require("@saltcorn/data/db");
 const Table = require("@saltcorn/data/models/table");
 const File = require("@saltcorn/data/models/file");
@@ -15,6 +17,7 @@ const {
   getTimeRange,
   createKeyCache,
   runQuery,
+  resetCache,
 } = require("./common");
 
 const objMap = (obj, f) => {
@@ -69,20 +72,6 @@ const updateSyncInfos = async (
     upd[sync_token_field] = syncData.syncToken;
     upd[ctag_field] = syncData.ctag;
     await table.updateRow(upd, existing[table.pk_name]);
-  }
-};
-
-const deleteUnsyncedCalendars = async (
-  destTbl,
-  eventLookup,
-  { calendar_url_field },
-) => {
-  const lookupKeys = Object.keys(eventLookup);
-  for (const url of lookupKeys) {
-    getState().log(5, `Deleting events for unsynced calendar ${url}`);
-    await destTbl.deleteRows({
-      [calendar_url_field]: url,
-    });
   }
 };
 
@@ -249,6 +238,26 @@ const incrementalSync = async (
 
   // new updates
   for (const updated of syncData.updated) {
+    const row = {
+      [url_field]: updated.url,
+      [summary_field]: updated.summary,
+      [start_field]: updated.start,
+      [end_field]: updated.end,
+      [location_field]: updated.location,
+      [description_field]: updated.description,
+      [categories_field]: updated.categories,
+      [calendar_url_field]: updated.calendar_url,
+      [etag_field]: updated.etag,
+      [all_day_field]: updated.all_day,
+    };
+    if (rrule_field) row[rrule_field] = updated.rrule;
+    if (attendees_field && updated.attendees?.length > 0) {
+      row[attendees_field] = updated.attendees.map((a) => a.value).join(", ");
+    }
+    if (attendee_params_field && updated.attendees?.length > 0) {
+      row[attendee_params_field] = updated.attendees;
+    }
+    if (uid_field) row[uid_field] = updated.uid;
     const existingEvent = await destTbl.getRow({ [url_field]: updated.url });
     if (existingEvent) {
       if (Object.keys(row).filter((k) => row[k] !== existingEvent[k]).length)
@@ -292,7 +301,6 @@ module.exports = (cfg) => ({
       ...table.fields.filter((f) => f.type?.name === "JSON").map((f) => f.name),
     ]);
     const triggers = await Trigger.find({});
-    const client = await getClient(cfg);
 
     return [
       {
@@ -463,6 +471,13 @@ module.exports = (cfg) => ({
           calcOptions: ["calendar_info_table", strFields],
         },
       },
+      {
+        name: "debug_to_file",
+        label: "Debug to file",
+        sublabel:
+          "Write sync debug data to /public/<timestamp>_caldavDebug.txt",
+        type: "Bool",
+      },
     ];
   },
   disableInBuilder: true,
@@ -475,7 +490,10 @@ module.exports = (cfg) => ({
       sync_token_field,
       ctag_field,
       calendar_info_url_field,
+      calendar_url_field,
+      error_action,
     } = configuration;
+    resetCache();
     const destTbl = Table.findOne({ name: table_dest });
     let infoTbl = null;
     let syncInfos = null;
@@ -488,36 +506,102 @@ module.exports = (cfg) => ({
         calendar_info_url_field,
       });
     }
+    // Build set of allowed calendar URLs (users table + checkbox filter)
+    const isCalEnabled = (url) => {
+      return true; //we removed checkboxes
+    };
+    const allowedUrls = syncInfos
+      ? new Set(Object.keys(syncInfos).filter((url) => isCalEnabled(url)))
+      : null;
     const eventLookup = await buildEventLookup(destTbl, configuration);
-    await deleteUnsyncedCalendars(destTbl, eventLookup, configuration);
-    const syncResult = await runQuery(
-      { ...cfg },
-      {},
-      { syncInfos, eventLookup },
-    );
+    const queryOpts = { syncInfos, eventLookup, allowedUrls };
+    const syncResult = await runQuery({ ...cfg }, {}, queryOpts);
     const entries = Object.entries(syncResult);
+    if (configuration.debug_to_file) {
+      const ts = new Date().toISOString().replace(/[:.]/g, "-");
+      const debugDir = "/home/saltcorn/.local/share/saltcorn/public";
+      const debugPath = path.join(debugDir, `${ts}_caldavDebug.txt`);
+      const debugData = {
+        timestamp: new Date().toISOString(),
+        allowedUrls: allowedUrls ? [...allowedUrls] : "all",
+        syncInfosForAllowed: allowedUrls
+          ? [...allowedUrls].map((url) => ({
+              url,
+              syncToken: syncInfos?.[url]?.syncToken || null,
+              ctag: syncInfos?.[url]?.ctag || null,
+            }))
+          : "all",
+        oldCalendarsSentToServer: queryOpts._debugOldCalendars || [],
+        syncCalendarsResult: queryOpts._debugSyncResult || {},
+        syncResultUrls: Object.keys(syncResult),
+        calendarsToSync: entries.map(([url, data]) => ({
+          url,
+          fullSync: data.fullSync,
+          created: data.created?.length || 0,
+          updated: data.updated?.length || 0,
+          deleted: data.deleted?.length || 0,
+        })),
+        eventLookupKeys: Object.keys(eventLookup),
+      };
+      fs.writeFileSync(debugPath, JSON.stringify(debugData, null, 2));
+      getState().log(5, `Debug data written to ${debugPath}`);
+    }
     getState().log(5, `Syncing ${entries.length} calendars`);
     for (const [calendarUrl, syncData] of entries) {
-      if (syncData.fullSync) {
+      try {
+        if (syncData.fullSync) {
+          getState().log(
+            6,
+            `Full sync for ${calendarUrl} (${syncData.created.length} events)`,
+          );
+          await fullSync(calendarUrl, syncData, eventLookup, configuration);
+        } else {
+          getState().log(
+            6,
+            `Incremental sync for ${calendarUrl} (${syncData.created.length} created, ${syncData.updated.length} updated, ${syncData.deleted.length} deleted)`,
+          );
+          await incrementalSync(
+            calendarUrl,
+            syncData,
+            eventLookup,
+            configuration,
+          );
+        }
+        if (infoTbl)
+          await updateSyncInfos(infoTbl, calendarUrl, configuration, syncData);
+      } catch (e) {
         getState().log(
-          5,
-          `Full sync for ${calendarUrl} (${syncData.created.length} events)`,
+          2,
+          `Error syncing calendar ${calendarUrl}: ${e.message}`,
         );
-        await fullSync(calendarUrl, syncData, eventLookup, configuration);
-      } else {
-        getState().log(
-          5,
-          `Incremental sync for ${calendarUrl} (${syncData.created.length} created, ${syncData.updated.length} updated, ${syncData.deleted.length} deleted)`,
-        );
-        await incrementalSync(
-          calendarUrl,
-          syncData,
-          eventLookup,
-          configuration,
-        );
+        if (error_action) {
+          try {
+            const trigger = Trigger.findOne({ name: error_action });
+            if (trigger)
+              await trigger.runWithoutRow({
+                error: e.message,
+                calendar_url: calendarUrl,
+              });
+          } catch (triggerErr) {
+            getState().log(
+              2,
+              `Error running error action: ${triggerErr.message}`,
+            );
+          }
+        }
       }
-      if (infoTbl)
-        await updateSyncInfos(infoTbl, calendarUrl, configuration, syncData);
+    }
+    // Delete events for calendars no longer in users table (after successful sync)
+    if (allowedUrls && calendar_url_field) {
+      const allSyncInfoUrls = syncInfos
+        ? new Set(Object.keys(syncInfos))
+        : new Set();
+      for (const url of Object.keys(eventLookup)) {
+        if (!allSyncInfoUrls.has(url)) {
+          getState().log(6, `Deleting events for removed calendar ${url}`);
+          await destTbl.deleteRows({ [calendar_url_field]: url });
+        }
+      }
     }
   },
 });
