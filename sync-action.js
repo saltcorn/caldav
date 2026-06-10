@@ -276,7 +276,7 @@ const incrementalSync = async (
 
 module.exports = (cfg) => ({
   configFields: async () => {
-    const tables = await Table.find();
+    const tables = await Table.find({}, { cached: true });
     const tableMap = {};
     tables.forEach((t) => (tableMap[t.name] = t));
 
